@@ -272,6 +272,10 @@ init :: (client: *Http_Client) {
     client.server = context.http_server;
 }
 
+fini :: (client: *Http_Client) {
+    fini(*client.pool);
+}
+
 add_client :: (socket: Socket.Socket) -> *Http_Client {
     client, locator := find_and_occupy_empty_slot(*context.http_server.clients);
 
@@ -307,8 +311,8 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 //   - macOS
 //   - macOS TLS
 //   - Windows TLS
-//   - Make a way to shutdown gracefully
 
+// @Todo: Is this a good idea?
 #add_context http_server: *Http_Server;
 
 MAX_REQUEST_SIZE :: 65536;

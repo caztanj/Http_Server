@@ -7,6 +7,7 @@ main :: () {
     quit := false;
     while !quit {
         requests, error := http_server_update();
+        if error then quit = true;
 
         for requests {
             response := get_response(it);
@@ -16,6 +17,8 @@ main :: () {
 
         reset_temporary_storage();
     }
+
+    shutdown(*http_server);
 }
 
 #import "Basic";

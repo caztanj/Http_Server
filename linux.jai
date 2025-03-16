@@ -24,10 +24,31 @@ init :: (server: *Http_Server, port: u16) -> error: bool {
     if result != 0 then return true;
 
     success := Socket.set_blocking(server.socket, false);
-    if !success then return false;
+    if !success then return true;
 
     error := epoll_add(server.epoll, server.socket, Linux.EPOLLIN);
-    return error;
+    if error then return true;
+
+    mask: POSIX.sigset_t;
+    POSIX.sigemptyset(*mask);
+    POSIX.sigaddset(*mask, POSIX.SIGINT);
+    POSIX.sigprocmask(POSIX.SIG_BLOCK, *mask, null);
+    server.sigint = POSIX.signalfd(-1, *mask, xx POSIX.SFD.CLOEXEC);
+    if server.sigint == -1 then return true;
+
+    error = epoll_add(server.epoll, server.sigint, Linux.EPOLLIN);
+    if error then return true;
+
+    return false;
+}
+
+shutdown :: (server: *Http_Server) {
+    for * server.clients {
+        close(it);
+        fini(it);
+    }
+
+    bucket_array_reset(*server.clients);
 }
 
 http_server_update :: () -> [] *Http_Request, error: bool #must {
@@ -47,6 +68,8 @@ http_server_update :: () -> [] *Http_Request, error: bool #must {
             accept_clients();
             continue;
         }
+
+        if ev.data.fd == context.http_server.sigint then return .[], true;
 
         client := find_client(ev.data.fd);
         assert(client != null);
@@ -103,6 +126,7 @@ send_response :: (response: *Http_Response) {
 Http_Server :: struct {
     epoll: s32;
     socket: Socket.Socket;
+    sigint: s32;
 
     // @Todo: Should we use a bucket array or a table?
     clients: Bucket_Array(Http_Client, 1024);
