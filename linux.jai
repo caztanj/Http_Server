@@ -1,6 +1,4 @@
 init :: (server: *Http_Server, port: u16) -> error: bool {
-    context.http_server = server;
-
     POSIX.signal(POSIX.SIGPIPE, POSIX.SIG_IGN);
 
     server.epoll = Linux.epoll_create1(0);
@@ -51,27 +49,27 @@ shutdown :: (server: *Http_Server) {
     bucket_array_reset(*server.clients);
 }
 
-http_server_update :: () -> [] *Http_Request, error: bool #must {
+http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
     results: [..] *Http_Request;
     results.allocator = temp;
 
-    timeout := process_timeouts_and_get_next_timeout();
+    timeout := process_timeouts_and_get_next_timeout(server);
 
     events: [1024] Linux.epoll_event;
-    nfds := Linux.epoll_wait(context.http_server.epoll, events.data, events.count, xx timeout);
+    nfds := Linux.epoll_wait(server.epoll, events.data, events.count, xx timeout);
     if nfds == -1 then return .[], true;
 
     for i: 0..nfds - 1 {
         ev := events[i];
 
-        if ev.data.fd == context.http_server.socket {
-            accept_clients();
+        if ev.data.fd == server.socket {
+            accept_clients(server);
             continue;
         }
 
-        if ev.data.fd == context.http_server.sigint then return .[], true;
+        if ev.data.fd == server.sigint then return .[], true;
 
-        client := find_client(ev.data.fd);
+        client := find_client(server, ev.data.fd);
         assert(client != null);
 
         if ev.events & Linux.EPOLLIN {
@@ -152,16 +150,16 @@ epoll_mod :: (epoll: s32, fd: s32, events: u32) -> error: bool {
     return result == -1;
 }
 
-accept_clients :: () {
+accept_clients :: (server: *Http_Server) {
     while true {
-        socket := Socket.accept_v6(context.http_server.socket);
+        socket := Socket.accept_v6(server.socket);
         if socket == Socket.INVALID_SOCKET {
             error := Socket.get_last_socket_error();
             if error == Socket.SOCKET_WOULDBLOCK then return;
             continue;
         }
 
-        client := add_client(socket);
+        client := add_client(server, socket);
 
         success := Socket.set_blocking(socket, false);
         if !success {
@@ -169,7 +167,7 @@ accept_clients :: () {
             continue;
         }
 
-        error := epoll_add(context.http_server.epoll, socket, Linux.EPOLLET | Linux.EPOLLIN);
+        error := epoll_add(server.epoll, socket, Linux.EPOLLET | Linux.EPOLLIN);
         if error {
             close(client);
             continue;
@@ -261,7 +259,7 @@ send_to_client :: (client: *Http_Client) {
         }
 
         reset(client);
-        epoll_mod(context.http_server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
+        epoll_mod(client.server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
     }
 }
 
@@ -276,13 +274,13 @@ close :: (client: *Http_Client) {
     remove_client(client);
 }
 
-process_timeouts_and_get_next_timeout :: () -> int {
-    if context.http_server.clients.count == 0 then return -1;
+process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {
+    if server.clients.count == 0 then return -1;
 
     now := current_time_monotonic();
     earliest := -1;
 
-    for * context.http_server.clients {
+    for * server.clients {
         if it.timeout <= now {
             close(it);
             continue;

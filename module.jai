@@ -258,7 +258,7 @@ Http_Client :: struct {
     locator: Bucket_Locator;
 }
 
-init :: (client: *Http_Client) {
+init :: (server: *Http_Server, client: *Http_Client) {
     context.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *client.pool };
 
     remember_allocators(client);
@@ -269,17 +269,17 @@ init :: (client: *Http_Client) {
     client.request.client = client;
     client.response.client = client;
 
-    client.server = context.http_server;
+    client.server = server;
 }
 
 fini :: (client: *Http_Client) {
     fini(*client.pool);
 }
 
-add_client :: (socket: Socket.Socket) -> *Http_Client {
-    client, locator := find_and_occupy_empty_slot(*context.http_server.clients);
+add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
+    client, locator := find_and_occupy_empty_slot(*server.clients);
 
-    init(client);
+    init(server, client);
 
     client.socket = socket;
     client.locator = locator;
@@ -289,8 +289,8 @@ add_client :: (socket: Socket.Socket) -> *Http_Client {
     return client;
 }
 
-find_client :: (socket: Socket.Socket) -> *Http_Client {
-    for * context.http_server.clients {
+find_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
+    for * server.clients {
         if it.socket == socket then return it;
     }
 
@@ -298,7 +298,7 @@ find_client :: (socket: Socket.Socket) -> *Http_Client {
 }
 
 remove_client :: (client: *Http_Client) {
-    bucket_array_remove(*context.http_server.clients, client.locator);
+    bucket_array_remove(*client.server.clients, client.locator);
 }
 
 set_timeout :: (client: *Http_Client, timeout: int) {
@@ -311,9 +311,6 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 //   - macOS
 //   - macOS TLS
 //   - Windows TLS
-
-// @Todo: Is this a good idea?
-#add_context http_server: *Http_Server;
 
 MAX_REQUEST_SIZE :: 65536;
 

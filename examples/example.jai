@@ -6,7 +6,7 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update();
+        requests, error := http_server_update(*http_server);
         if error then quit = true;
 
         for requests {
