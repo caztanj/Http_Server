@@ -6,14 +6,18 @@ init :: (server: *Http_Server, port: u16) -> error: bool {
     server.epoll = Linux.epoll_create1(0);
     if server.epoll == -1 then return true;
 
-    server.socket = Socket.socket(Socket.AF_INET, .SOCK_STREAM, 0);
+    server.socket = Socket.socket(Socket.AF_INET6, .SOCK_STREAM, Socket.IPPROTO.IPPROTO_TCP);
     if server.socket == Socket.INVALID_SOCKET then return true;
 
     options := 1;
     result := Socket.setsockopt(server.socket, Socket.SOL_SOCKET, Socket.SO_REUSEPORT, *options, size_of(type_of(options)));
     if result == -1 then return true;
 
-    result = Socket.bind(server.socket, Socket.INADDR_ANY, port);
+    // On Linux we can use both IPv4 and IPv6 if we open an IPv6 socket. This behaviour can be turned off with these 2 lines:
+    // enable := 1;
+    // result = Socket.setsockopt(server.socket, xx Socket.IPPROTO.IPPROTO_IPV6, Socket.IPV6_V6ONLY, *enable, size_of(type_of(enable)));
+
+    result = Socket.bind(server.socket, Socket.in6addr_any.__in6_u.__u6_addr8, port);
     if result != 0 then return true;
 
     result = Socket.listen(server.socket, Socket.SOMAXCONN);
@@ -126,7 +130,7 @@ epoll_mod :: (epoll: s32, fd: s32, events: u32) -> error: bool {
 
 accept_clients :: () {
     while true {
-        socket := Socket.accept(context.http_server.socket);
+        socket := Socket.accept_v6(context.http_server.socket);
         if socket == Socket.INVALID_SOCKET {
             error := Socket.get_last_socket_error();
             if error == Socket.SOCKET_WOULDBLOCK then return;

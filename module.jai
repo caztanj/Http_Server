@@ -302,7 +302,6 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 }
 
 // @Todo:
-//   - IPv6
 //   - TLS (LibreSSL)
 //   - Windows (IOCP)
 //   - macOS
