@@ -1,4 +1,4 @@
-init :: (server: *Http_Server, port: u16) -> error: bool {
+init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", private_key_file := "") -> error: bool {
     POSIX.signal(POSIX.SIGPIPE, POSIX.SIG_IGN);
 
     server.epoll = Linux.epoll_create1(0);
@@ -37,6 +37,18 @@ init :: (server: *Http_Server, port: u16) -> error: bool {
     error = epoll_add(server.epoll, server.sigint, Linux.EPOLLIN);
     if error then return true;
 
+    #if ENABLE_TLS {
+        if tls {
+            server.ssl_ctx = create_context();
+            if server.ssl_ctx == null then return true;
+
+            error = configure_context(server.ssl_ctx, certificate_file, private_key_file);
+            if error then return true;
+        }
+    }
+
+    server.tls = tls;
+
     return false;
 }
 
@@ -44,6 +56,12 @@ shutdown :: (server: *Http_Server) {
     for * server.clients {
         close(it);
         fini(it);
+    }
+
+    #if ENABLE_TLS {
+        if server.tls {
+            SSL_CTX_free(server.ssl_ctx);
+        }
     }
 
     bucket_array_reset(*server.clients);
@@ -124,7 +142,14 @@ send_response :: (response: *Http_Response) {
 Http_Server :: struct {
     epoll: s32;
     socket: Socket.Socket;
+
     sigint: s32;
+
+    tls: bool;
+
+    #if ENABLE_TLS {
+        ssl_ctx: *SSL_CTX;
+    }
 
     // @Todo: Should we use a bucket array or a table?
     clients: Bucket_Array(Http_Client, 1024);
@@ -161,6 +186,20 @@ accept_clients :: (server: *Http_Server) {
 
         client := add_client(server, socket);
 
+        #if ENABLE_TLS {
+            if server.tls {
+                client.ssl = SSL_new(server.ssl_ctx);
+
+                SSL_set_fd(client.ssl, socket);
+
+                if SSL_accept(client.ssl) <= 0 {
+                    ERR_print_errors_fp(POSIX.stderr);
+                    close(client);
+                    continue;
+                }
+            }
+        }
+
         success := Socket.set_blocking(socket, false);
         if !success {
             close(client);
@@ -175,12 +214,22 @@ accept_clients :: (server: *Http_Server) {
     }
 }
 
+recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+    #if ENABLE_TLS {
+        if client.server.tls {
+            return SSL_read(client.ssl, buffer, xx size);
+        }
+    }
+
+    return Socket.recv(client.socket, buffer, xx size, 0);
+}
+
 read_from_client :: (client: *Http_Client) -> *Http_Request {
     while true {
         offset := client.request.raw.data + client.request.raw_count;
         max    := client.request.raw.count - client.request.raw_count;
 
-        bytes_read := Socket.recv(client.socket, offset, xx max, 0);
+        bytes_read := recv(client, offset, max);
         if bytes_read == -1 {
             error := Socket.get_last_socket_error();
             if error != Socket.SOCKET_WOULDBLOCK {
@@ -224,6 +273,16 @@ read_from_client :: (client: *Http_Client) -> *Http_Request {
     return null;
 }
 
+send :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+    #if ENABLE_TLS {
+        if client.server.tls {
+            return SSL_write(client.ssl, buffer, xx size);
+        }
+    }
+
+    return Socket.send(client.socket, buffer, xx size, 0);
+}
+
 send_to_client :: (client: *Http_Client) {
     client.handed_off_to_main_loop = false;
     if client.close {
@@ -235,7 +294,7 @@ send_to_client :: (client: *Http_Client) {
         offset := client.response.serialized.data + client.response.bytes_sent;
         max    := client.response.serialized.count - client.response.bytes_sent;
 
-        bytes_sent := Socket.send(client.socket, offset, xx max, 0);
+        bytes_sent := send(client, offset, max);
         if bytes_sent == -1 {
             error := Socket.get_last_socket_error();
             if error != Socket.SOCKET_WOULDBLOCK {
@@ -267,6 +326,13 @@ close :: (client: *Http_Client) {
     if client.handed_off_to_main_loop {
         client.close = true;
         return;
+    }
+
+    #if ENABLE_TLS {
+        if client.server.tls {
+            SSL_shutdown(client.ssl);
+            SSL_free(client.ssl);
+        }
     }
 
     Socket.close_and_reset(*client.socket);

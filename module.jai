@@ -1,3 +1,5 @@
+#module_parameters () (ENABLE_TLS := false);
+
 get_response :: (request: *Http_Request) -> *Http_Response {
     return *request.client.response;
 }
@@ -242,6 +244,10 @@ Http_Client :: struct {
     socket: Socket.Socket;
     server: *Http_Server;
 
+    #if ENABLE_TLS {
+        ssl:    *SSL;
+    }
+
     request:  Http_Request;
     response: Http_Response;
 
@@ -306,7 +312,6 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 }
 
 // @Todo:
-//   - TLS (LibreSSL)
 //   - Windows (IOCP)
 //   - macOS
 //   - macOS TLS
@@ -320,6 +325,10 @@ MAX_REQUEST_SIZE :: 65536;
 #import "String";
 
 Socket :: #import "Socket";
+
+#if ENABLE_TLS {
+    #load "openssl.jai";
+}
 
 #if OS == .LINUX {
     #load "linux.jai";
