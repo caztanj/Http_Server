@@ -327,12 +327,6 @@ set_timeout :: (client: *Http_Client, timeout: int) {
     client.timeout = current_time_monotonic() + seconds_to_apollo(timeout);
 }
 
-// @Todo:
-//   - Windows (IOCP)
-//   - macOS
-//   - macOS TLS
-//   - Windows TLS
-
 MAX_REQUEST_SIZE :: 65536;
 
 #import "Basic";
