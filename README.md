@@ -16,6 +16,7 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 - macOS
   - kqueue
   - TLS
+- Router
 - Complete HTTP/1.1
 - HTTP/2
 - HTTP/3
