@@ -176,21 +176,13 @@ Parse_Request_Status :: enum {
     Success;
 }
 
-// @Todo: This procedure can be made much better.
 parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     s := string.{ data = client.request.raw.data, count = client.request.raw_count };
 
-    found, head, body := split_from_left(s, "\r\n\r\n");
+    method, found := parse_token(*s, delimiters=" ", spaces="");
     if !found then return .Need_More_Data;
 
-    headers: string = ---;
-    found, request_line:, headers = split_from_left(head, "\r\n");
-    if !found then return .Need_More_Data;
-
-    parts := split(request_line, " ",, temp);
-    if parts.count != 3 then return .Error;
-
-    if parts[0] == {
+    if method == {
         case "GET";      client.request.method = .GET;
         case "HEAD";     client.request.method = .HEAD;
         case "POST";     client.request.method = .POST;
@@ -204,21 +196,45 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
         case;  return .Error;
     }
 
-    client.request.uri = parts[1];
+    uri:, found = parse_token(*s, delimiters=" ", spaces=" ");
+    if !found then return .Need_More_Data;
 
-    if parts[2] != "HTTP/1.1" then return .Error;
+    client.request.uri = uri;
 
-    header_lines := split(headers, "\r\n",, temp);
-    for header_lines {
-        found, key, value := split_from_left(it, ":");
-        if !found then return .Error;
+    version:, found = parse_token(*s, delimiters="\r", spaces=" ");
+    if !found then return .Need_More_Data;
 
-        header := Http_Header.{ key = trim(key), value = trim(value) };
+    if version != "HTTP/1.1" then return .Error;
+
+    if s.count < 2 then return .Need_More_Data;
+    if !starts_with(s, "\r\n") then return .Error;
+
+    advance(*s, 2);
+
+    while true {
+        key, found := parse_token(*s, delimiters=":", spaces=" ");
+        if !found then return .Need_More_Data;
+
+        advance(*s);
+
+        value:, found = parse_token(*s, delimiters="\r", spaces=" ");
+        if !found then return .Need_More_Data;
+
+        if s.count < 2 then return .Need_More_Data;
+        if !starts_with(s, "\r\n") then return .Error;
+
+        advance(*s, 2);
+
+        header := Http_Header.{ key = key, value = value };
         array_add(*client.request.headers, header);
+
+        if starts_with(s, "\r\n") {
+            advance(*s, 2);
+            break;
+        }
     }
 
-    // @Todo: Make sure body.count == Content-Length.
-    client.request.body = body;
+    client.request.body = s;
 
     return .Success;
 }
