@@ -196,12 +196,16 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
         case;  return .Error;
     }
 
-    uri:, found = parse_token(*s, delimiters=" ", spaces=" ");
+    s = trim_left(s, chars=" ");
+
+    uri:, found = parse_token(*s, delimiters=" ", spaces="");
     if !found then return .Need_More_Data;
 
     client.request.uri = uri;
 
-    version:, found = parse_token(*s, delimiters="\r", spaces=" ");
+    s = trim_left(s, chars=" ");
+
+    version:, found = parse_token(*s, delimiters="\r", spaces="");
     if !found then return .Need_More_Data;
 
     if version != "HTTP/1.1" then return .Error;
@@ -212,12 +216,16 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     advance(*s, 2);
 
     while true {
-        key, found := parse_token(*s, delimiters=":", spaces=" ");
+        s = trim_left(s, chars=" ");
+
+        key, found := parse_token(*s, delimiters=":", spaces="");
         if !found then return .Need_More_Data;
 
         advance(*s);
 
-        value:, found = parse_token(*s, delimiters="\r", spaces=" ");
+        s = trim_left(s, chars=" ");
+
+        value:, found = parse_token(*s, delimiters="\r", spaces="");
         if !found then return .Need_More_Data;
 
         if s.count < 2 then return .Need_More_Data;
