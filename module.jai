@@ -153,6 +153,14 @@ set_header :: (headers: *[..] Http_Header, key: string, value: string) {
     array_add(headers, header);
 }
 
+get_header :: (headers: [] Http_Header, key: string) -> string, error: bool #must {
+    for headers {
+        if equal_nocase(it.key, key) then return it.value, false;
+    }
+
+    return "", true;
+}
+
 html :: (response: *Http_Response, html: string) {
     response.status = .Ok;
     response.body   = html;
@@ -179,7 +187,7 @@ Parse_Request_Status :: enum {
 parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     s := string.{ data = client.request.raw.data, count = client.request.raw_count };
 
-    method, found := parse_token(*s, delimiters=" ", spaces="");
+    method, found := parse_token(*s, delimiters=" \r", spaces="");
     if !found then return .Need_More_Data;
 
     if method == {
@@ -193,12 +201,14 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
         case "TRACE";    client.request.method = .TRACE;
         case "PATCH";    client.request.method = .PATCH;
 
-        case;  return .Error;
+        case;
+            if method.count > 7 || starts_with(s, " ") then return .Error;
+            return .Need_More_Data;
     }
 
     s = trim_left(s, chars=" ");
 
-    uri:, found = parse_token(*s, delimiters=" ", spaces="");
+    uri:, found = parse_token(*s, delimiters=" \r", spaces="");
     if !found then return .Need_More_Data;
 
     client.request.uri = uri;
@@ -215,11 +225,18 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
 
     advance(*s, 2);
 
+    // No headers and no body.
+    if starts_with(s, "\r\n") then return .Success;
+
+    content_length := 0;
+
     while true {
         s = trim_left(s, chars=" ");
 
         key, found := parse_token(*s, delimiters=":", spaces="");
         if !found then return .Need_More_Data;
+
+        if s.count == 0 then return .Need_More_Data;
 
         advance(*s);
 
@@ -233,6 +250,13 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
 
         advance(*s, 2);
 
+        if equal_nocase(key, "Content-Length") {
+            result, success := string_to_int(value);
+            if !success then return .Error;
+
+            content_length = result;
+        }
+
         header := Http_Header.{ key = key, value = value };
         array_add(*client.request.headers, header);
 
@@ -242,7 +266,10 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
         }
     }
 
-    client.request.body = s;
+    if content_length {
+        client.request.body = s;
+        client.request.body.count = content_length;
+    }
 
     return .Success;
 }
@@ -343,6 +370,8 @@ MAX_REQUEST_SIZE :: 65536;
 #import "String";
 
 Socket :: #import "Socket";
+
+#load "tests.jai";
 
 #if ENABLE_TLS {
     #load "openssl.jai";
