@@ -15,6 +15,9 @@ Http_Request :: struct {
     raw:       [MAX_REQUEST_SIZE] u8;
     raw_count: int;
 
+    t:     *u8;
+    max_t: *u8;
+
     client: *Http_Client;
 }
 
@@ -185,120 +188,100 @@ Parse_Request_Status :: enum {
 }
 
 parse_request :: (client: *Http_Client) -> Parse_Request_Status {
-    s := string.{ data = client.request.raw.data, count = client.request.raw_count };
+    client.request.t     = client.request.raw.data;
+    client.request.max_t = client.request.t + client.request.raw_count;
 
-    status, count := parse_request_line(client);
+    status := parse_request_line(*client.request);
     if status != .Success then return status;
-
-    advance(*s, count);
-
-    // No headers and no body.
-    if starts_with(s, "\r\n") then return .Success;
 
     content_length := 0;
 
     while true {
-        s = trim_left(s, chars=" ");
+        if client.request.t.* == #char "\r" {
+            client.request.t += 1;
+            if client.request.t >= client.request.max_t then return .Need_More_Data;
+            if client.request.t.* != #char "\n"         then return .Error;
+            break;
+        }
 
-        key, found := parse_token(*s, delimiters=":", spaces="");
-        if !found then return .Need_More_Data;
+        status, header := parse_header(*client.request);
+        if status != .Success then return status;
 
-        if s.count == 0 then return .Need_More_Data;
-
-        advance(*s);
-
-        s = trim_left(s, chars=" ");
-
-        value:, found = parse_token(*s, delimiters="\r", spaces="");
-        if !found then return .Need_More_Data;
-
-        if s.count < 2 then return .Need_More_Data;
-        if !starts_with(s, "\r\n") then return .Error;
-
-        advance(*s, 2);
-
-        if equal_nocase(key, "Content-Length") {
-            result, success := string_to_int(value);
+        if equal_nocase(header.key, "Content-Length") {
+            result, success := string_to_int(header.value);
             if !success then return .Error;
-
             content_length = result;
         }
 
-        header := Http_Header.{ key = key, value = value };
         array_add(*client.request.headers, header);
-
-        if starts_with(s, "\r\n") {
-            advance(*s, 2);
-            break;
-        }
     }
 
     if content_length {
-        client.request.body = s;
+        client.request.t += 1;
+        if client.request.t + content_length > client.request.max_t then return .Need_More_Data;
+
+        client.request.body.data = client.request.t;
         client.request.body.count = content_length;
     }
 
     return .Success;
 }
 
-parse_request_line :: (client: *Http_Client) -> Parse_Request_Status, count: int {
-    t     := client.request.raw.data;
-    max_t := t + client.request.raw_count;
-
-    method := string.{ data = t };
+parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
+    m := string.{ data = t };
 
     while t < max_t {
-        if t - method.data > 7 then return .Error, 0;
+        if t - m.data > 7      then return .Error;
         if t.* == #char " "    then break;
-        if t.* == #char "\r"   then return .Error, 0;
+        if t.* == #char "\r"   then return .Error;
         t += 1;
     }
 
-    if t >= max_t then return .Need_More_Data, 0;
+    if t >= max_t then return .Need_More_Data;
 
-    method.count = t - method.data;
+    m.count = t - m.data;
 
-    if method == {
-        case "GET";      client.request.method = .GET;
-        case "HEAD";     client.request.method = .HEAD;
-        case "POST";     client.request.method = .POST;
-        case "PUT";      client.request.method = .PUT;
-        case "DELETE";   client.request.method = .DELETE;
-        case "CONNECT";  client.request.method = .CONNECT;
-        case "OPTIONS";  client.request.method = .OPTIONS;
-        case "TRACE";    client.request.method = .TRACE;
-        case "PATCH";    client.request.method = .PATCH;
+    if m == {
+        case "GET";      method = .GET;
+        case "HEAD";     method = .HEAD;
+        case "POST";     method = .POST;
+        case "PUT";      method = .PUT;
+        case "DELETE";   method = .DELETE;
+        case "CONNECT";  method = .CONNECT;
+        case "OPTIONS";  method = .OPTIONS;
+        case "TRACE";    method = .TRACE;
+        case "PATCH";    method = .PATCH;
 
-        case;  return .Error, 0;
+        case;  return .Error;
     }
 
     t += 1;
-    if t >= max_t then return .Need_More_Data, 0;
+    if t >= max_t then return .Need_More_Data;
 
-    client.request.uri.data = t;
+    uri.data = t;
 
     while t < max_t {
         if t.* == #char " "  then break;
-        if t.* == #char "\r" then return .Error, 0;
+        if t.* == #char "\r" then return .Error;
         t += 1;
     }
 
-    if t >= max_t then return .Need_More_Data, 0;
+    if t >= max_t then return .Need_More_Data;
 
-    client.request.uri.count = t - client.request.uri.data;
+    uri.count = t - uri.data;
 
     t += 1;
-    if t >= max_t then return .Need_More_Data, 0;
+    if t >= max_t then return .Need_More_Data;
 
     version := string.{ data = t };
 
     while t < max_t {
-        if t - version.data > 8 then return .Error, 0;
+        if t - version.data > 8 then return .Error;
 
         if t.* == #char "\r" {
             t += 1;
-            if t >= max_t        then return .Need_More_Data, 0;
-            if t.* != #char "\n" then return .Error, 0;
+            if t >= max_t        then return .Need_More_Data;
+            if t.* != #char "\n" then return .Error;
             break;
         }
 
@@ -306,14 +289,51 @@ parse_request_line :: (client: *Http_Client) -> Parse_Request_Status, count: int
         t += 1;
     }
 
+    if version != "HTTP/1.1" then return .Error;
+
     t += 1;
-    if t >= max_t then return .Need_More_Data, 0;
+    if t >= max_t then return .Need_More_Data;
 
-    if version != "HTTP/1.1" then return .Error, 0;
+    return .Success;
+}
 
-    count := t - client.request.raw.data;
+parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Header {
+    key := string.{ data = t };
 
-    return .Success, count;
+    while t < max_t {
+        if t.* == #char ":" then break;
+        t += 1;
+    }
+
+    if t >= max_t then return .Need_More_Data, .{};
+
+    key.count = t - key.data;
+
+    key = trim(key, chars=" ");
+
+    t += 1;
+    if t >= max_t then return .Need_More_Data, .{};
+
+    value := string.{ data = t };
+
+    while t < max_t {
+        if t.* == #char "\r" {
+            t += 1;
+            if t >= max_t        then return .Need_More_Data, .{};
+            if t.* != #char "\n" then return .Error, .{};
+            break;
+        }
+
+        value.count += 1;
+        t += 1;
+    }
+
+    t += 1;
+    if t >= max_t then return .Need_More_Data, .{};
+
+    value = trim(value, chars=" ");
+
+    return .Success, .{ key = key, value = value };
 }
 
 reset :: (client: *Http_Client) {
