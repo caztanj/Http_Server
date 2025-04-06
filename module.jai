@@ -207,7 +207,7 @@ decode_uri :: (uri: string) -> string, error: bool #must {
         t += 1;
     }
 
-    return builder_to_string(*b,, temp), false;
+    return builder_to_string(*b), false;
 }
 
 #scope_module
