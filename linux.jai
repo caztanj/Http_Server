@@ -151,7 +151,6 @@ Http_Server :: struct {
         ssl_ctx: *SSL_CTX;
     }
 
-    // @Todo: Should we use a bucket array or a table?
     clients: Bucket_Array(Http_Client, 1024);
 }
 

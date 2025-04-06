@@ -427,7 +427,6 @@ init :: (server: *Http_Server, client: *Http_Client) {
     remember_allocators(*client.request.headers);
     remember_allocators(*client.response.headers);
 
-    // @Todo: Do we need this on both request and response?
     client.request.client = client;
     client.response.client = client;
 
