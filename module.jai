@@ -28,7 +28,6 @@ Http_Response :: struct {
 
     body: string;
 
-    // @Todo: Make this a [] u8 so we can send binary data.
     serialized: string;
     bytes_sent: int;
 
