@@ -179,7 +179,50 @@ bad_request :: (response: *Http_Response) {
     response.status = .Bad_Request;
 }
 
+decode_uri :: (uri: string) -> string, error: bool #must {
+    b: String_Builder;
+    b.allocator = temp;
+
+    t     := uri.data;
+    max_t := t + uri.count;
+
+    current := string.{ count = 2 };
+
+    while t < max_t {
+        if t.* == #char "%" {
+            t += 2;
+            if t >= max_t then return "", true;
+
+            current.data = t - 1;
+            if !is_digits(current) then return "", true;
+
+            result, success := string_to_int(current, 16, u8);
+            if !success then return "", true;
+
+            append(*b, *result, 1);
+        } else {
+            append(*b, t, 1);
+        }
+
+        t += 1;
+    }
+
+    return builder_to_string(*b,, temp), false;
+}
+
 #scope_module
+
+is_digits :: (s: string) -> bool {
+    t     := s.data;
+    max_t := t + s.count;
+
+    while t < max_t {
+        if t.* < #char "0" || t.* > #char "9" then return false;
+        t += 1;
+    }
+
+    return true;
+}
 
 Parse_Request_Status :: enum {
     Error;

@@ -210,3 +210,71 @@
         assert(client.request.body == "Hel");
     }
 }
+
+#run {
+    {
+        result, error := decode_uri("%20");
+        assert(!error);
+        assert(result == " ");
+    }
+
+    {
+        result, error := decode_uri("abc%20123");
+        assert(!error);
+        assert(result == "abc 123");
+    }
+
+    {
+        result, error := decode_uri("%21abc%20123%22");
+        assert(!error);
+        assert(result == "!abc 123\"");
+    }
+
+    {
+        result, error := decode_uri("abc123");
+        assert(!error);
+        assert(result == "abc123");
+    }
+
+    {
+        result, error := decode_uri("%");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("%2");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("%%");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("abc%");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("%abc");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("%20%2a");
+        assert(error);
+        assert(result == "");
+    }
+
+    {
+        result, error := decode_uri("");
+        assert(!error);
+        assert(result == "");
+    }
+}
