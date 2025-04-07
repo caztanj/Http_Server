@@ -483,6 +483,12 @@ Socket :: #import "Socket";
 #if OS == .LINUX {
     #load "linux.jai";
 
-    Linux  :: #import "Linux";
-    POSIX  :: #import "POSIX";
+    Linux :: #import "Linux";
+    POSIX :: #import "POSIX";
+}
+
+#if OS == .WINDOWS {
+    #load "windows.jai";
+
+    Windows :: #import "Windows";
 }

@@ -4,3 +4,5 @@ examples/tls
 examples/multi_threaded
 cert.pem
 key.pem
+*.exe
+*.pdb
