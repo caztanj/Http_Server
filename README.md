@@ -7,11 +7,17 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 - Partial HTTP/1.1
 - Linux (epoll)
 - Windows (Winsock2)
-- TLS (OpenSSL)
+- TLS (LibreSSL)
+
+## Compile LibreSSL and Generate Bindings
+
+If you want to use TLS you need to compile LibreSSL and generate bindings for it. Simply run `jai generate.jai - -compile`.
+
+You need to have CMake and Ninja installed.
 
 ## Linux
 
-The Linux backend uses epoll and OpenSSL.
+The Linux backend uses epoll and LibreSSL.
 
 An additional io_uring backend will be added some time in the future.
 

@@ -60,7 +60,7 @@ shutdown :: (server: *Http_Server) {
 
     #if ENABLE_TLS {
         if server.tls {
-            SSL_CTX_free(server.ssl_ctx);
+            LibreSSL.SSL_CTX_free(server.ssl_ctx);
         }
     }
 
@@ -148,7 +148,7 @@ Http_Server :: struct {
     tls: bool;
 
     #if ENABLE_TLS {
-        ssl_ctx: *SSL_CTX;
+        ssl_ctx: *LibreSSL.SSL_CTX;
     }
 
     clients: Bucket_Array(Http_Client, 1024);
@@ -187,12 +187,12 @@ accept_clients :: (server: *Http_Server) {
 
         #if ENABLE_TLS {
             if server.tls {
-                client.ssl = SSL_new(server.ssl_ctx);
+                client.ssl = LibreSSL.SSL_new(server.ssl_ctx);
 
-                SSL_set_fd(client.ssl, socket);
+                LibreSSL.SSL_set_fd(client.ssl, socket);
 
-                if SSL_accept(client.ssl) <= 0 {
-                    ERR_print_errors_fp(POSIX.stderr);
+                if LibreSSL.SSL_accept(client.ssl) <= 0 {
+                    LibreSSL.ERR_print_errors_fp(POSIX.stderr);
                     close(client);
                     continue;
                 }
@@ -216,7 +216,7 @@ accept_clients :: (server: *Http_Server) {
 recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
     #if ENABLE_TLS {
         if client.server.tls {
-            return SSL_read(client.ssl, buffer, xx size);
+            return LibreSSL.SSL_read(client.ssl, buffer, xx size);
         }
     }
 
@@ -275,7 +275,7 @@ read_from_client :: (client: *Http_Client) -> *Http_Request {
 send :: (client: *Http_Client, buffer: *u8, size: int) -> int {
     #if ENABLE_TLS {
         if client.server.tls {
-            return SSL_write(client.ssl, buffer, xx size);
+            return LibreSSL.SSL_write(client.ssl, buffer, xx size);
         }
     }
 
@@ -329,8 +329,8 @@ close :: (client: *Http_Client) {
 
     #if ENABLE_TLS {
         if client.server.tls {
-            SSL_shutdown(client.ssl);
-            SSL_free(client.ssl);
+            LibreSSL.SSL_shutdown(client.ssl);
+            LibreSSL.SSL_free(client.ssl);
         }
     }
 

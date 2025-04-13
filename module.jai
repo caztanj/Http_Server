@@ -400,7 +400,7 @@ Http_Client :: struct {
     server: *Http_Server;
 
     #if ENABLE_TLS {
-        ssl:    *SSL;
+        ssl: *LibreSSL.SSL;
     }
 
     request:  Http_Request;
@@ -469,15 +469,42 @@ MAX_REQUEST_SIZE :: 65536;
 
 #import "Basic";
 #import "Bucket_Array";
+#import "File_Utilities";
 #import "Flat_Pool";
 #import "String";
+#import "System";
 
 Socket :: #import "Socket";
 
 #load "tests.jai";
 
 #if ENABLE_TLS {
-    #load "openssl.jai";
+    create_context :: () -> *LibreSSL.SSL_CTX {
+        method := LibreSSL.TLS_server_method();
+        ctx := LibreSSL.SSL_CTX_new(method);
+        if !ctx {
+            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            return null;
+        }
+
+        return ctx;
+    }
+
+    configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool #must {
+        if LibreSSL.SSL_CTX_use_certificate_file(ctx, temp_c_string(certificate_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
+            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            return true;
+        }
+
+        if LibreSSL.SSL_CTX_use_PrivateKey_file(ctx, temp_c_string(private_key_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
+            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            return true;
+        }
+
+        return false;
+    }
+
+    LibreSSL :: #import,dir "modules/LibreSSL";
 }
 
 #if OS == .LINUX {
