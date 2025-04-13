@@ -11,9 +11,9 @@ modules/LibreSSL/.build
 modules/LibreSSL/android
 modules/LibreSSL/linux
 modules/LibreSSL/windows
-modules/LibreSSL/linux_shared_build
-modules/LibreSSL/linux_shared_install
-modules/LibreSSL/linux_static_build
-modules/LibreSSL/linux_static_install
+modules/LibreSSL/*_shared_build
+modules/LibreSSL/*_shared_install
+modules/LibreSSL/*_static_build
+modules/LibreSSL/*_static_install
 modules/LibreSSL/unix.jai
 modules/LibreSSL/windows.jai
