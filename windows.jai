@@ -1,6 +1,4 @@
 init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", private_key_file := "") -> error: bool {
-    assert(!tls);
-
     Socket.socket_init();
 
     server.socket = Socket.socket(Socket.AF_INET, .SOCK_STREAM, Socket.IPPROTO.IPPROTO_TCP);
@@ -17,6 +15,16 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
 
     poll_add(server, server.socket, Socket.POLLIN);
 
+    #if ENABLE_TLS {
+        if tls {
+            server.ssl_ctx = create_context();
+            if server.ssl_ctx == null then return true;
+
+            error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
+            if error then return true;
+        }
+    }
+
     server.tls = tls;
 
     return false;
@@ -26,6 +34,12 @@ shutdown :: (server: *Http_Server) {
     for * server.clients {
         close(it);
         fini(it);
+    }
+
+    #if ENABLE_TLS {
+        if server.tls {
+            LibreSSL.SSL_CTX_free(server.ssl_ctx);
+        }
     }
 
     array_reset(*server.events);
@@ -102,6 +116,10 @@ Http_Server :: struct {
 
     tls: bool;
 
+    #if ENABLE_TLS {
+        ssl_ctx: *LibreSSL.SSL_CTX;
+    }
+
     events:  [..] Socket.WSAPOLLFD;
     clients: Bucket_Array(Http_Client, 1024);
 }
@@ -133,6 +151,24 @@ accept_clients :: (server: *Http_Server) {
 
         client := add_client(server, socket);
 
+        #if ENABLE_TLS {
+            if server.tls {
+                client.ssl = LibreSSL.SSL_new(server.ssl_ctx);
+
+                LibreSSL.SSL_set_fd(client.ssl, xx socket);
+
+                result := LibreSSL.SSL_accept(client.ssl);
+                if result <= 0 {
+                    error := LibreSSL.SSL_get_error(client.ssl, result);
+                    if error != LibreSSL.SSL_ERROR_WANT_READ && error != LibreSSL.SSL_ERROR_WANT_WRITE {
+                        print_ssl_errors();
+                        close(client);
+                        continue;
+                    }
+                }
+            }
+        }
+
         success := Socket.set_blocking(socket, false);
         if !success {
             close(client);
@@ -143,14 +179,32 @@ accept_clients :: (server: *Http_Server) {
     }
 }
 
+recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+    #if ENABLE_TLS {
+        if client.server.tls {
+            return LibreSSL.SSL_read(client.ssl, buffer, xx size);
+        }
+    }
+
+    return Socket.recv(client.socket, buffer, xx size, 0);
+}
+
 read_from_client :: (client: *Http_Client) -> *Http_Request {
     while true {
         offset := client.request.raw.data + client.request.raw_count;
         max    := client.request.raw.count - client.request.raw_count;
 
-        bytes_read := Socket.recv(client.socket, offset, xx max, 0);
+        bytes_read := recv(client, offset, max);
         if bytes_read == -1 {
             error := Socket.get_last_socket_error();
+
+            #if ENABLE_TLS {
+                if LibreSSL.SSL_get_error(client.ssl, xx bytes_read) == {
+                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                }
+            }
+
             if error != Socket.SOCKET_WOULDBLOCK {
                 close(client);
                 return null;
@@ -192,6 +246,16 @@ read_from_client :: (client: *Http_Client) -> *Http_Request {
     return null;
 }
 
+send :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+    #if ENABLE_TLS {
+        if client.server.tls {
+            return LibreSSL.SSL_write(client.ssl, buffer, xx size);
+        }
+    }
+
+    return Socket.send(client.socket, buffer, xx size, 0);
+}
+
 send_to_client :: (client: *Http_Client) {
     client.handed_off_to_main_loop = false;
     if client.close {
@@ -203,9 +267,17 @@ send_to_client :: (client: *Http_Client) {
         offset := client.response.serialized.data + client.response.bytes_sent;
         max    := client.response.serialized.count - client.response.bytes_sent;
 
-        bytes_sent := Socket.send(client.socket, offset, xx max, 0);
+        bytes_sent := send(client, offset, max);
         if bytes_sent == -1 {
             error := Socket.get_last_socket_error();
+
+            #if ENABLE_TLS {
+                if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
+                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                }
+            }
+
             if error != Socket.SOCKET_WOULDBLOCK {
                 close(client);
                 return;
@@ -241,6 +313,13 @@ close :: (client: *Http_Client) {
         if it.fd == client.socket {
             remove it;
             break;
+        }
+    }
+
+    #if ENABLE_TLS {
+        if client.server.tls {
+            LibreSSL.SSL_shutdown(client.ssl);
+            LibreSSL.SSL_free(client.ssl);
         }
     }
 

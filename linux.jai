@@ -192,7 +192,7 @@ accept_clients :: (server: *Http_Server) {
                 LibreSSL.SSL_set_fd(client.ssl, socket);
 
                 if LibreSSL.SSL_accept(client.ssl) <= 0 {
-                    LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+                    print_ssl_errors();
                     close(client);
                     continue;
                 }

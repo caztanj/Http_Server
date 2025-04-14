@@ -483,7 +483,7 @@ Socket :: #import "Socket";
         method := LibreSSL.TLS_server_method();
         ctx := LibreSSL.SSL_CTX_new(method);
         if !ctx {
-            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            print_ssl_errors();
             return null;
         }
 
@@ -492,16 +492,38 @@ Socket :: #import "Socket";
 
     configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool #must {
         if LibreSSL.SSL_CTX_use_certificate_file(ctx, temp_c_string(certificate_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
-            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            print_ssl_errors();
             return true;
         }
 
         if LibreSSL.SSL_CTX_use_PrivateKey_file(ctx, temp_c_string(private_key_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
-            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+            print_ssl_errors();
             return true;
         }
 
         return false;
+    }
+
+    print_ssl_errors :: () {
+        #if OS == .WINDOWS {
+            buffer: [1024] u8;
+            bio := LibreSSL.BIO_new(LibreSSL.BIO_s_mem());
+            LibreSSL.ERR_print_errors(bio);
+
+            s: string = ---;
+            s.data = buffer.data;
+
+            count := LibreSSL.BIO_read(bio, buffer.data, buffer.count);
+
+            if count > 0 {
+                s.count = count;
+                print("%\n", s);
+            }
+
+            LibreSSL.BIO_free(bio);
+        } else {
+            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+        }
     }
 
     LibreSSL :: #import,dir "modules/LibreSSL";
