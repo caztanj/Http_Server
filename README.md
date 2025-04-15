@@ -23,7 +23,7 @@ An additional io_uring backend will be added some time in the future.
 
 ## Windows
 
-The Windows backend uses Winsock2 and does not support TLS (yet).
+The Windows backend uses Winsock2 and LibreSSL.
 
 An additional IOCP backend will be added some time in the future.
 
@@ -31,7 +31,6 @@ An additional IOCP backend will be added some time in the future.
 
 - Windows
   - IOCP
-  - TLS
 - macOS
   - kqueue
   - TLS
