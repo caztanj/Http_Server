@@ -471,11 +471,13 @@ MAX_REQUEST_SIZE :: 65536;
 #import "Bucket_Array";
 #import "File_Utilities";
 #import "Flat_Pool";
+#import "Hash_Table";
 #import "String";
 #import "System";
 
 Socket :: #import "Socket";
 
+#load "router.jai";
 #load "tests.jai";
 
 #if ENABLE_TLS {
