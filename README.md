@@ -8,6 +8,7 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 - Linux (epoll)
 - Windows (Winsock2)
 - TLS (LibreSSL)
+- Basic router
 
 ## Compile LibreSSL and Generate Bindings
 
@@ -35,6 +36,8 @@ An additional IOCP backend will be added some time in the future.
   - kqueue
   - TLS
 - Router
+  - Wildcards
+  - Parameters
 - Complete HTTP/1.1
 - HTTP/2
 - HTTP/3
