@@ -88,11 +88,16 @@ send_response :: (response: *Http_Response) {
     b: String_Builder;
     b.allocator = temp;
 
-    if response.client.close_after_send {
-        set_header(*response.headers, "Connection", "close");
-    } else {
-        set_header(*response.headers, "Connection", "keep-alive");
-        set_header(*response.headers, "Keep-Alive", "timeout=30"); // @Todo: Make this configurable.
+    // @Todo: Update linux.jai
+    // @Todo: Do this somewhere else. Maybe in html() and not_found()?
+    _, error := get_header(response.headers, "Connection");
+    if error {
+        if response.client.close_after_send {
+            set_header(*response.headers, "Connection", "close");
+        } else {
+            set_header(*response.headers, "Connection", "keep-alive");
+            set_header(*response.headers, "Keep-Alive", "timeout=30"); // @Todo: Make this configurable.
+        }
     }
 
     set_header(*response.headers, "Content-Length", tprint("%", response.body.count));

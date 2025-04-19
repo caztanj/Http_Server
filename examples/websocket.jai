@@ -1,0 +1,34 @@
+main :: () {
+    http_server: Http_Server;
+
+    error := init(*http_server, 3000);
+    if error then return;
+
+    quit := false;
+    while !quit {
+        requests, error := http_server_update(*http_server);
+        if error then quit = true;
+
+        for requests {
+            if is_websocket_upgrade(it) {
+                error := perform_websocket_upgrade(it);
+                if error {
+                    response := get_response(it);
+                    not_found(response);
+                    send_response(response);
+                }
+            } else {
+                response := get_response(it);
+                html(response, "<html>WebSocket</html>");
+                send_response(response);
+            }
+        }
+
+        reset_temporary_storage();
+    }
+
+    shutdown(*http_server);
+}
+
+#import "Basic";
+#import,file "../module.jai" () (ENABLE_TLS = true);

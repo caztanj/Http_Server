@@ -467,6 +467,7 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 
 MAX_REQUEST_SIZE :: 65536;
 
+#import "Base64";
 #import "Basic";
 #import "Bucket_Array";
 #import "File_Utilities";
@@ -479,6 +480,7 @@ Socket :: #import "Socket";
 
 #load "router.jai";
 #load "tests.jai";
+#load "websocket.jai";
 
 #if ENABLE_TLS {
     create_context :: () -> *LibreSSL.SSL_CTX {
