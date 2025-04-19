@@ -22,11 +22,11 @@ run_http_server :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update(*http_server);
+        messages, error := http_server_update(*http_server);
         if error then quit = true;
 
-        for requests {
-            response := get_response(it);
+        for messages {
+            response := get_response(*it.http_request);
             html(response, "<html>Hello</html>");
             send_response(response);
         }

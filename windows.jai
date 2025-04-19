@@ -46,8 +46,8 @@ shutdown :: (server: *Http_Server) {
     bucket_array_reset(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
-    results: [..] *Http_Request;
+http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
+    results: [..] *Message;
     results.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
@@ -65,9 +65,9 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         assert(client != null);
 
         if it.revents & Socket.POLLIN {
-            request := read_from_client(client);
-            if request {
-                array_add(*results, request);
+            message := read_from_client(client);
+            if message {
+                array_add(*results, message);
             }
 
             continue;
@@ -88,11 +88,16 @@ send_response :: (response: *Http_Response) {
     b: String_Builder;
     b.allocator = temp;
 
-    if response.client.close_after_send {
-        set_header(*response.headers, "Connection", "close");
-    } else {
-        set_header(*response.headers, "Connection", "keep-alive");
-        set_header(*response.headers, "Keep-Alive", "timeout=30"); // @Todo: Make this configurable.
+    // @Todo: Update linux.jai
+    // @Todo: Do this somewhere else. Maybe in html() and not_found()?
+    _, error := get_header(response.headers, "Connection");
+    if error {
+        if response.client.close_after_send {
+            set_header(*response.headers, "Connection", "close");
+        } else {
+            set_header(*response.headers, "Connection", "keep-alive");
+            set_header(*response.headers, "Keep-Alive", "timeout=30"); // @Todo: Make this configurable.
+        }
     }
 
     set_header(*response.headers, "Content-Length", tprint("%", response.body.count));
@@ -189,7 +194,7 @@ recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
     return Socket.recv(client.socket, buffer, xx size, 0);
 }
 
-read_from_client :: (client: *Http_Client) -> *Http_Request {
+read_from_client :: (client: *Http_Client) -> *Message {
     while true {
         offset := client.request.raw.data + client.request.raw_count;
         max    := client.request.raw.count - client.request.raw_count;
@@ -199,9 +204,11 @@ read_from_client :: (client: *Http_Client) -> *Http_Request {
             error := Socket.get_last_socket_error();
 
             #if ENABLE_TLS {
-                if LibreSSL.SSL_get_error(client.ssl, xx bytes_read) == {
-                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
-                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                if client.server.tls {
+                    if LibreSSL.SSL_get_error(client.ssl, xx bytes_read) == {
+                        case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                        case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                    }
                 }
             }
 
@@ -224,6 +231,15 @@ read_from_client :: (client: *Http_Client) -> *Http_Request {
         if client.request.raw_count == MAX_REQUEST_SIZE {
             close(client);
             return null;
+        }
+
+        if client.phase == .Web_Socket {
+            frame, error := parse_web_socket_frame(*client.request);
+
+            client.request.type = .Web_Socket;
+            client.request.frame = frame;
+
+            return *client.request;
         }
 
         status := parse_request(client);
@@ -296,6 +312,10 @@ send_to_client :: (client: *Http_Client) {
         if client.close_after_send {
             close(client);
             return;
+        }
+
+        if client.phase == .Transitioning_To_Web_Socket {
+            client.phase = .Web_Socket;
         }
 
         reset(client);

@@ -4,6 +4,30 @@ get_response :: (request: *Http_Request) -> *Http_Response {
     return *request.client.response;
 }
 
+Message_Type :: enum {
+    Http;
+    Web_Socket;
+}
+
+Message :: struct {
+    type: Message_Type;
+
+    raw:       [MAX_REQUEST_SIZE] u8;
+    raw_count: int;
+
+    t:     *u8;
+    max_t: *u8;
+
+    using http_request: Http_Request;
+
+    #place http_request;
+    using web_socket_message: Web_Socket_Message;
+}
+
+Web_Socket_Message :: struct {
+    frame: Web_Socket_Frame;
+}
+
 Http_Request :: struct {
     uri:    string;
     method: Http_Method;
@@ -11,12 +35,6 @@ Http_Request :: struct {
     headers: [..] Http_Header;
 
     body: string;
-
-    raw:       [MAX_REQUEST_SIZE] u8;
-    raw_count: int;
-
-    t:     *u8;
-    max_t: *u8;
 
     client: *Http_Client;
 }
@@ -269,7 +287,7 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     return .Success;
 }
 
-parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
+parse_request_line :: (using request: *Message) -> Parse_Request_Status {
     m := string.{ data = t };
 
     while t < max_t {
@@ -339,7 +357,7 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     return .Success;
 }
 
-parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Header {
+parse_header :: (using request: *Message) -> Parse_Request_Status, Http_Header {
     key := string.{ data = t };
 
     while t < max_t {
@@ -395,7 +413,15 @@ reset :: (client: *Http_Client) {
     client.response.bytes_sent       = 0;
 }
 
+Http_Client_Phase :: enum {
+    Http;
+    Transitioning_To_Web_Socket;
+    Web_Socket;
+}
+
 Http_Client :: struct {
+    phase: Http_Client_Phase;
+
     socket: Socket.Socket;
     server: *Http_Server;
 
@@ -403,7 +429,7 @@ Http_Client :: struct {
         ssl: *LibreSSL.SSL;
     }
 
-    request:  Http_Request;
+    request:  Message;
     response: Http_Response;
 
     timeout: Apollo_Time;
@@ -467,6 +493,7 @@ set_timeout :: (client: *Http_Client, timeout: int) {
 
 MAX_REQUEST_SIZE :: 65536;
 
+#import "Base64";
 #import "Basic";
 #import "Bucket_Array";
 #import "File_Utilities";
@@ -479,6 +506,7 @@ Socket :: #import "Socket";
 
 #load "router.jai";
 #load "tests.jai";
+#load "websocket.jai";
 
 #if ENABLE_TLS {
     create_context :: () -> *LibreSSL.SSL_CTX {

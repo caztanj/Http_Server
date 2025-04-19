@@ -25,13 +25,13 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update(*http_server);
+        messages, error := http_server_update(*http_server);
         if error then quit = true;
 
-        for requests {
+        for messages {
             handled := http_router_handle_request(*router, it);
             if !handled {
-                response := get_response(it);
+                response := get_response(*it.http_request);
                 not_found(response);
                 send_response(response);
             }

@@ -2,6 +2,8 @@
 examples/example
 examples/tls
 examples/multi_threaded
+examples/router
+examples/websocket
 cert.pem
 key.pem
 *.exe

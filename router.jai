@@ -87,15 +87,15 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
     return false;
 }
 
-http_router_handle_request :: (router: *Http_Router, request: *Http_Request) -> handled: bool {
-    response := get_response(request);
+http_router_handle_request :: (router: *Http_Router, message: *Message) -> handled: bool {
+    response := get_response(*message.http_request);
 
-    if !starts_with(request.uri, "/") then return false;
+    if !starts_with(message.http_request.uri, "/") then return false;
 
     chip: *Chip;
     chips: *Table(string, Chip);
 
-    if #complete request.method == {
+    if #complete message.http_request.method == {
         case .GET;      chips = *router.get;
         case .HEAD;     chips = *router.head;
         case .POST;     chips = *router.post;
@@ -107,11 +107,11 @@ http_router_handle_request :: (router: *Http_Router, request: *Http_Request) -> 
         case .PATCH;    chips = *router.patch;
     }
 
-    if request.uri == "/" {
+    if message.http_request.uri == "/" {
         chip = table_find_pointer(chips, "/");
     }
 
-    parts := split(request.uri, "/",, temp);
+    parts := split(message.http_request.uri, "/",, temp);
 
     for parts {
         if it == "" then continue;
@@ -126,7 +126,7 @@ http_router_handle_request :: (router: *Http_Router, request: *Http_Request) -> 
 
     if chip.handler == null then return false;
 
-    chip.handler(request, response);
+    chip.handler(*message.http_request, response);
     send_response(response);
 
     return true;
