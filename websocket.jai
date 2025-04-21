@@ -101,7 +101,7 @@ send_web_socket_text :: (message: Message, text: string) {
         done = t == max_t;
     }
 
-    poll_mod(message.client.server, message.client.socket, Socket.POLLOUT);
+    send_data_to_client(message.client);
 }
 
 #scope_module

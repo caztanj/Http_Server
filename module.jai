@@ -513,6 +513,7 @@ MAX_REQUEST_SIZE :: 65536;
 
 Socket :: #import "Socket";
 
+#load "poll.jai";
 #load "router.jai";
 #load "tests.jai";
 #load "websocket.jai";
