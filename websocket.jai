@@ -42,7 +42,7 @@ perform_web_socket_upgrade :: (message: Message) -> error: bool {
     return false;
 }
 
-send_web_socket_text :: (message: Message, text: string) {
+send_web_socket_message :: (message: Message, text: string) {
     frame := Web_Socket_Frame.{
         fin = true,
         opcode = .Data_Frame_Text,

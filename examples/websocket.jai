@@ -27,7 +27,7 @@ main :: () {
 
                 case .Web_Socket;
                     print("%\n", it.web_socket_message.frame);
-                    send_web_socket_text(it, "Hello from the server!");
+                    send_web_socket_message(it, "Hello from the server!");
             }
         }
 
