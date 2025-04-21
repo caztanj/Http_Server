@@ -88,7 +88,7 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
 }
 
 http_router_handle_request :: (router: *Http_Router, message: *Message) -> handled: bool {
-    response := get_response(*message.http_request);
+    response := get_response(message);
 
     if !starts_with(message.http_request.uri, "/") then return false;
 

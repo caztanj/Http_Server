@@ -1,6 +1,6 @@
 #module_parameters () (ENABLE_TLS := false);
 
-get_response :: (request: *Http_Request) -> *Http_Response {
+get_response :: (request: Message) -> *Http_Response {
     return *request.client.response;
 }
 
@@ -17,6 +17,8 @@ Message :: struct {
 
     t:     *u8;
     max_t: *u8;
+
+    client: *Http_Client;
 
     using http_request: Http_Request;
 
@@ -35,8 +37,6 @@ Http_Request :: struct {
     headers: [..] Http_Header;
 
     body: string;
-
-    client: *Http_Client;
 }
 
 Http_Response :: struct {

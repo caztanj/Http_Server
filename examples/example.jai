@@ -10,7 +10,7 @@ main :: () {
         if error then quit = true;
 
         for messages {
-            response := get_response(*it.http_request);
+            response := get_response(it);
             html(response, "<html>Hello</html>");
             send_response(response);
         }

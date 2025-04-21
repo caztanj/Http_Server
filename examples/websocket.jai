@@ -13,20 +13,21 @@ main :: () {
             if #complete it.type == {
                 case .Http;
                     if is_web_socket_upgrade(*it.http_request) {
-                        error := perform_web_socket_upgrade(*it.http_request);
+                        error := perform_web_socket_upgrade(it);
                         if error {
-                            response := get_response(*it.http_request);
+                            response := get_response(it);
                             not_found(response);
                             send_response(response);
                         }
                     } else {
-                        response := get_response(*it.http_request);
+                        response := get_response(it);
                         html(response, "<html>WebSocket</html>");
                         send_response(response);
                     }
 
                 case .Web_Socket;
                     print("%\n", it.web_socket_message.frame);
+                    send_web_socket_text(it, "Hello from the server!");
             }
         }
 

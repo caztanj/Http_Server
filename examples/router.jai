@@ -31,7 +31,7 @@ main :: () {
         for messages {
             handled := http_router_handle_request(*router, it);
             if !handled {
-                response := get_response(*it.http_request);
+                response := get_response(it);
                 not_found(response);
                 send_response(response);
             }

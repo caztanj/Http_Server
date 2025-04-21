@@ -15,8 +15,8 @@ is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     return true;
 }
 
-perform_web_socket_upgrade :: (request: *Http_Request) -> error: bool {
-    sec_web_socket_key, error := get_header(request.headers, "Sec-WebSocket-Key");
+perform_web_socket_upgrade :: (message: Message) -> error: bool {
+    sec_web_socket_key, error := get_header(message.http_request.headers, "Sec-WebSocket-Key");
     if error then return true;
 
     key_magic := join(sec_web_socket_key, WEB_SOCKET_MAGIC,, temp);
@@ -27,7 +27,7 @@ perform_web_socket_upgrade :: (request: *Http_Request) -> error: bool {
 
     accept := base64_encode(xx hash,, temp);
 
-    response := get_response(request);
+    response := get_response(message);
 
     response.status = .Switching_Protocols;
 
@@ -37,9 +37,71 @@ perform_web_socket_upgrade :: (request: *Http_Request) -> error: bool {
 
     send_response(response);
 
-    request.client.phase = .Transitioning_To_Web_Socket;
+    message.client.phase = .Transitioning_To_Web_Socket;
 
     return false;
+}
+
+send_web_socket_text :: (message: Message, text: string) {
+    frame := Web_Socket_Frame.{
+        fin = true,
+        opcode = .Data_Frame_Text,
+        masked = false,
+        payload_length = xx text.count,
+        payload = xx text,
+    };
+
+    chunk := array_add(*message.client.chunks_to_send);
+
+    t     := chunk.buffer.data;
+    max_t := t + chunk.buffer.count;
+
+    if frame.fin {
+        t.* = 0b10000000;
+    }
+
+    t.* |= xx frame.opcode;
+
+    t += 1;
+    assert(t < max_t);
+
+    if frame.payload_length < 126 {
+        t.* = xx frame.payload_length;
+
+        t += 1;
+        assert(t < max_t);
+    } else {
+        t.* = 127;
+
+        t += 1;
+        assert(t < max_t);
+
+        (cast(*u64) t).* = frame.payload_length;
+
+        t += 8;
+        assert(t < max_t);
+    }
+
+    chunk.bytes_to_send = t - chunk.buffer.data;
+
+    t     = frame.payload.data;
+    max_t = t + frame.payload.count;
+
+    done := false;
+    while !done {
+        chunk := array_add(*message.client.chunks_to_send);
+        count := min(chunk.buffer.count, max_t - t);
+
+        memcpy(chunk.buffer.data, t, count);
+
+        chunk.bytes_to_send = count;
+
+        t += count;
+
+        done = t == max_t;
+    }
+
+    poll_mod(message.client.server, message.client.socket, Socket.POLLOUT);
 }
 
 #scope_module
