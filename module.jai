@@ -413,6 +413,12 @@ reset :: (client: *Http_Client) {
     client.response.bytes_sent       = 0;
 }
 
+Chunk :: struct {
+    buffer:        [4096] u8;
+    bytes_to_send: int;
+    bytes_sent:    int;
+}
+
 Http_Client_Phase :: enum {
     Http;
     Transitioning_To_Web_Socket;
@@ -431,6 +437,8 @@ Http_Client :: struct {
 
     request:  Message;
     response: Http_Response;
+
+    chunks_to_send: [..] Chunk;
 
     timeout: Apollo_Time;
 
@@ -451,6 +459,7 @@ init :: (server: *Http_Server, client: *Http_Client) {
     remember_allocators(client);
     remember_allocators(*client.request.headers);
     remember_allocators(*client.response.headers);
+    remember_allocators(*client.chunks_to_send);
 
     client.request.client = client;
     client.response.client = client;

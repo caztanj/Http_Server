@@ -137,7 +137,22 @@ send_response :: (response: *Http_Response) {
     append(*b, "\r\n");
     append(*b, response.body);
 
-    response.serialized = builder_to_string(*b,, response.client.allocator);
+    serialized := builder_to_string(*b,, temp);
+
+    done := false;
+    while !done {
+        chunk := array_add(*response.client.chunks_to_send);
+        count := min(chunk.buffer.count, serialized.count);
+
+        memcpy(chunk.buffer.data, serialized.data, count);
+
+        chunk.bytes_to_send = count;
+
+        serialized.data += count;
+        serialized.count -= count;
+
+        done = serialized.count == 0;
+    }
 
     epoll_mod(response.client.server.epoll, response.client.socket, Linux.EPOLLET | Linux.EPOLLOUT);
 }
@@ -301,9 +316,12 @@ send_to_client :: (client: *Http_Client) {
         return;
     }
 
-    while client.response.serialized.count - client.response.bytes_sent > 0 {
-        offset := client.response.serialized.data + client.response.bytes_sent;
-        max    := client.response.serialized.count - client.response.bytes_sent;
+    assert(client.chunks_to_send.count > 0);
+    chunk := *client.chunks_to_send[0];
+
+    while chunk.bytes_to_send - chunk.bytes_sent > 0 {
+        offset := chunk.buffer.data + chunk.bytes_sent;
+        max    := chunk.bytes_to_send - chunk.bytes_sent;
 
         bytes_sent := send(client, offset, max);
         if bytes_sent == -1 {
@@ -317,12 +335,19 @@ send_to_client :: (client: *Http_Client) {
             return;
         }
 
-        client.response.bytes_sent += bytes_sent;
+        chunk.bytes_sent += bytes_sent;
 
         set_timeout(client, 30);
     }
 
-    if client.response.serialized.count - client.response.bytes_sent == 0 {
+    if chunk.bytes_to_send - chunk.bytes_sent == 0 {
+        array_ordered_remove_by_index(*client.chunks_to_send, 0);
+
+        if client.chunks_to_send.count > 0 {
+            send_to_client(client);
+            return;
+        }
+
         if client.close_after_send {
             close(client);
             return;
