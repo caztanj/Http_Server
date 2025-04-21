@@ -1,25 +1,25 @@
-is_websocket_upgrade :: (request: *Http_Request) -> bool {
+is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     upgrade, error := get_header(request.headers, "Upgrade");
     if error then return false;
 
     if !equal_nocase(upgrade, "websocket") then return false;
 
-    sec_websocket_version:, error = get_header(request.headers, "Sec-WebSocket-Version");
+    sec_web_socket_version:, error = get_header(request.headers, "Sec-WebSocket-Version");
     if error then return false;
 
-    if !equal_nocase(sec_websocket_version, "13") then return false;
+    if !equal_nocase(sec_web_socket_version, "13") then return false;
 
-    sec_websocket_key:, error = get_header(request.headers, "Sec-WebSocket-Key");
+    sec_web_socket_key:, error = get_header(request.headers, "Sec-WebSocket-Key");
     if error then return false;
 
     return true;
 }
 
-perform_websocket_upgrade :: (request: *Http_Request) -> error: bool {
-    sec_websocket_key, error := get_header(request.headers, "Sec-WebSocket-Key");
+perform_web_socket_upgrade :: (request: *Http_Request) -> error: bool {
+    sec_web_socket_key, error := get_header(request.headers, "Sec-WebSocket-Key");
     if error then return true;
 
-    key_magic := join(sec_websocket_key, WEBSOCKET_MAGIC,, temp);
+    key_magic := join(sec_web_socket_key, WEB_SOCKET_MAGIC,, temp);
 
     // @Todo: We don't want to depend on LibreSSL here.
     hash: [LibreSSL.SHA_DIGEST_LENGTH] u8;
@@ -116,4 +116,4 @@ Web_Socket_Frame :: struct {
     payload: [] u8;
 }
 
-WEBSOCKET_MAGIC :: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+WEB_SOCKET_MAGIC :: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";

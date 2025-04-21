@@ -12,8 +12,8 @@ main :: () {
         for messages {
             if #complete it.type == {
                 case .Http;
-                    if is_websocket_upgrade(*it.http_request) {
-                        error := perform_websocket_upgrade(*it.http_request);
+                    if is_web_socket_upgrade(*it.http_request) {
+                        error := perform_web_socket_upgrade(*it.http_request);
                         if error {
                             response := get_response(*it.http_request);
                             not_found(response);

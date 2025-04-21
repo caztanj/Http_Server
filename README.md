@@ -41,7 +41,7 @@ An additional IOCP backend will be added some time in the future.
 - Complete HTTP/1.1
 - HTTP/2
 - HTTP/3
-- WebSockets
+- Web Sockets
 
 ## Contributions
 
