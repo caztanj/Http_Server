@@ -1,55 +1,37 @@
 #module_parameters () (ENABLE_TLS := false);
 
-get_response :: (request: Message) -> *Http_Response {
-    return *request.client.response;
+make_response :: (request: *Http_Request) -> *Http_Response {
+    response := New(Http_Response);
+    response.client_id = request.client_id;
+    return response;
 }
 
-Message_Type :: enum {
-    Http;
-    Web_Socket;
-}
+Http_Request :: struct {
+    client_id: Socket.Socket;
 
-Message :: struct {
-    type: Message_Type;
+    uri:    string;
+    method: Http_Method;
+
+    headers: [..] Http_Header;
+
+    body: string; // View into raw
 
     raw:       [MAX_REQUEST_SIZE] u8;
     raw_count: int;
 
     t:     *u8;
     max_t: *u8;
-
-    client: *Http_Client;
-
-    using http_request: Http_Request;
-
-    #place http_request;
-    using web_socket_message: Web_Socket_Message;
-}
-
-Web_Socket_Message :: struct {
-    frame: Web_Socket_Frame;
-}
-
-Http_Request :: struct {
-    uri:    string;
-    method: Http_Method;
-
-    headers: [..] Http_Header;
-
-    body: string;
 }
 
 Http_Response :: struct {
+    client_id: Socket.Socket;
+
     status: Http_Response_Status;
 
     headers: [..] Http_Header;
+    headers.allocator = temp;
 
-    body: string;
-
-    serialized: string;
-    bytes_sent: int;
-
-    client: *Http_Client;
+    body: string; // Temporary storage
 }
 
 Http_Method :: enum {
@@ -181,19 +163,58 @@ get_header :: (headers: [] Http_Header, key: string) -> string, error: bool #mus
     return "", true;
 }
 
-html :: (response: *Http_Response, html: string) {
+html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
+    client := find_client(server, response.client_id);
+    if client == null then return true;
+
     response.status = .Ok;
     response.body   = html;
 
     set_header(*response.headers, "Content-Type", "text/html");
+    set_header(*response.headers, "Content-Length", tprint("%", html.count));
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
 }
 
-not_found :: (response: *Http_Response) {
+not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
+    client := find_client(server, response.client_id);
+    if client == null then return true;
+
     response.status = .Not_Found;
+
+    set_header(*response.headers, "Content-Length", "0");
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
 }
 
-bad_request :: (response: *Http_Response) {
+bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
+    client := find_client(server, response.client_id);
+    if client == null then return true;
+
     response.status = .Bad_Request;
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
 }
 
 decode_uri :: (uri: string) -> string, error: bool #must {
@@ -287,7 +308,7 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     return .Success;
 }
 
-parse_request_line :: (using request: *Message) -> Parse_Request_Status {
+parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     m := string.{ data = t };
 
     while t < max_t {
@@ -357,7 +378,7 @@ parse_request_line :: (using request: *Message) -> Parse_Request_Status {
     return .Success;
 }
 
-parse_header :: (using request: *Message) -> Parse_Request_Status, Http_Header {
+parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Header {
     key := string.{ data = t };
 
     while t < max_t {
@@ -396,47 +417,20 @@ parse_header :: (using request: *Message) -> Parse_Request_Status, Http_Header {
     return .Success, .{ key = key, value = value };
 }
 
-reset :: (client: *Http_Client) {
-    reset(*client.pool);
-
-    array_reset_keeping_memory(*client.request.headers);
-    array_reset_keeping_memory(*client.response.headers);
-
-    client.request.uri.count  = 0;
-    client.request.method     = .GET;
-    client.request.body.count = 0;
-    client.request.raw_count  = 0;
-
-    client.response.status           = .None;
-    client.response.body.count       = 0;
-    client.response.serialized.count = 0;
-    client.response.bytes_sent       = 0;
-}
-
 Chunk :: struct {
     buffer:        [4096] u8;
     bytes_to_send: int;
     bytes_sent:    int;
 }
 
-Http_Client_Phase :: enum {
-    Http;
-    Transitioning_To_Web_Socket;
-    Web_Socket;
-}
-
 Http_Client :: struct {
-    phase: Http_Client_Phase;
-
     socket: Socket.Socket;
-    server: *Http_Server;
 
     #if ENABLE_TLS {
         ssl: *LibreSSL.SSL;
     }
 
-    request:  Message;
-    response: Http_Response;
+    request: Http_Request;
 
     chunks_to_send: [..] Chunk;
 
@@ -446,54 +440,38 @@ Http_Client :: struct {
 
     handed_off_to_main_loop: bool;
     close: bool;
-
-    pool:      Flat_Pool;
-    allocator: Allocator;
-
-    locator: Bucket_Locator;
 }
 
-init :: (server: *Http_Server, client: *Http_Client) {
-    context.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *client.pool };
-
-    remember_allocators(client);
-    remember_allocators(*client.request.headers);
-    remember_allocators(*client.response.headers);
-    remember_allocators(*client.chunks_to_send);
-
-    client.request.client = client;
-    client.response.client = client;
-
-    client.server = server;
-}
-
-fini :: (client: *Http_Client) {
-    fini(*client.pool);
+init :: (client: *Http_Client, socket: Socket.Socket) {
+    client.request.client_id = socket;
 }
 
 add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
-    client, locator := find_and_occupy_empty_slot(*server.clients);
+    client := New(Http_Client);
 
-    init(server, client);
+    init(client, socket);
 
+    // @Todo: Remove client.socket
     client.socket = socket;
-    client.locator = locator;
 
     set_timeout(client, 5);
+
+    table_add(*server.clients, socket, client);
 
     return client;
 }
 
-find_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
-    for * server.clients {
-        if it.socket == socket then return it;
-    }
-
-    return null;
+find_client :: (server: *Http_Server, id: Socket.Socket) -> *Http_Client {
+    client, success := table_find(*server.clients, id);
+    if !success then return null;
+    return client;
 }
 
-remove_client :: (client: *Http_Client) {
-    bucket_array_remove(*client.server.clients, client.locator);
+remove_client :: (server: *Http_Server, client: *Http_Client) {
+    table_remove(*server.clients, client.socket);
+    array_reset(*client.request.headers);
+    array_reset(*client.chunks_to_send);
+    free(client);
 }
 
 set_timeout :: (client: *Http_Client, timeout: int) {
@@ -504,7 +482,6 @@ MAX_REQUEST_SIZE :: 65536;
 
 #import "Base64";
 #import "Basic";
-#import "Bucket_Array";
 #import "File_Utilities";
 #import "Flat_Pool";
 #import "Hash_Table";
@@ -516,7 +493,7 @@ Socket :: #import "Socket";
 #load "poll.jai";
 #load "router.jai";
 #load "tests.jai";
-#load "websocket.jai";
+// #load "websocket.jai";
 
 #if ENABLE_TLS {
     create_context :: () -> *LibreSSL.SSL_CTX {

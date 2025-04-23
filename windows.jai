@@ -31,9 +31,10 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
 }
 
 shutdown :: (server: *Http_Server) {
-    for * server.clients {
-        close(it);
-        fini(it);
+    server.shutdown = true;
+
+    for server.clients {
+        close(server, it);
     }
 
     #if ENABLE_TLS {
@@ -43,11 +44,11 @@ shutdown :: (server: *Http_Server) {
     }
 
     array_reset(*server.events);
-    bucket_array_reset(*server.clients);
+    deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
-    results: [..] *Message;
+http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
+    results: [..] *Http_Request;
     results.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
@@ -65,7 +66,7 @@ http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
         assert(client != null);
 
         if it.revents & Socket.POLLIN {
-            message := read_from_client(client);
+            message := read_from_client(server, client);
             if message {
                 array_add(*results, message);
             }
@@ -74,7 +75,7 @@ http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
         }
 
         if it.revents & Socket.POLLOUT {
-            send_to_client(client);
+            send_to_client(server, client);
             continue;
         }
     }
@@ -91,22 +92,24 @@ Http_Server :: struct {
         ssl_ctx: *LibreSSL.SSL_CTX;
     }
 
+    shutdown: bool;
+
     events:  [..] Socket.WSAPOLLFD;
-    clients: Bucket_Array(Http_Client, 1024);
+    clients: Table(Socket.Socket, *Http_Client);
 }
 
 #scope_module
 
-read_data_from_client :: (client: *Http_Client, $add := false) {
+read_data_from_client :: (server: *Http_Server, client: *Http_Client, $add := false) {
     #if add {
-        poll_add(client.server, client.socket, Socket.POLLIN);
+        poll_add(server, client.socket, Socket.POLLIN);
     } else {
-        poll_mod(client.server, client.socket, Socket.POLLIN);
+        poll_mod(server, client.socket, Socket.POLLIN);
     }
 }
 
-send_data_to_client :: (client: *Http_Client) {
-    poll_mod(client.server, client.socket, Socket.POLLOUT);
+send_data_to_client :: (server: *Http_Server, client: *Http_Client) {
+    poll_mod(server, client.socket, Socket.POLLOUT);
 }
 
 poll_add :: (server: *Http_Server, fd: Socket.Socket, events: s16) {
@@ -123,13 +126,13 @@ poll_mod :: (server: *Http_Server, fd: Socket.Socket, events: s16) {
     }
 }
 
-close :: (client: *Http_Client) {
-    if client.handed_off_to_main_loop {
+close :: (server: *Http_Server, client: *Http_Client) {
+    if client.handed_off_to_main_loop && !server.shutdown {
         client.close = true;
         return;
     }
 
-    for client.server.events {
+    for server.events {
         if it.fd == client.socket {
             remove it;
             break;
@@ -137,13 +140,13 @@ close :: (client: *Http_Client) {
     }
 
     #if ENABLE_TLS {
-        if client.server.tls {
+        if server.tls {
             LibreSSL.SSL_shutdown(client.ssl);
             LibreSSL.SSL_free(client.ssl);
         }
     }
 
-    Socket.close_and_reset(*client.socket);
-    fini(*client.pool);
-    remove_client(client);
+    socket := client.socket;
+    Socket.close_and_reset(*socket);
+    remove_client(server, client);
 }

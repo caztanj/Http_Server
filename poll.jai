@@ -1,21 +1,11 @@
-send_response :: (response: *Http_Response) {
+send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool {
+    client := find_client(server, response.client_id);
+    if client == null then return true;
+
     assert(response.status != .None);
 
     b: String_Builder;
     b.allocator = temp;
-
-    // @Todo: Do this somewhere else. Maybe in html() and not_found()?
-    _, error := get_header(response.headers, "Connection");
-    if error {
-        if response.client.close_after_send {
-            set_header(*response.headers, "Connection", "close");
-        } else {
-            set_header(*response.headers, "Connection", "keep-alive");
-            set_header(*response.headers, "Keep-Alive", "timeout=30"); // @Todo: Make this configurable.
-        }
-    }
-
-    set_header(*response.headers, "Content-Length", tprint("%", response.body.count));
 
     append(*b, tprint("HTTP/1.1 %\r\n", response_status_to_string(response.status)));
 
@@ -30,7 +20,7 @@ send_response :: (response: *Http_Response) {
 
     done := false;
     while !done {
-        chunk := array_add(*response.client.chunks_to_send);
+        chunk := array_add(*client.chunks_to_send);
         count := min(chunk.buffer.count, serialized.count);
 
         memcpy(chunk.buffer.data, serialized.data, count);
@@ -43,7 +33,9 @@ send_response :: (response: *Http_Response) {
         done = serialized.count == 0;
     }
 
-    send_data_to_client(response.client);
+    send_data_to_client(server, client);
+
+    return false;
 }
 
 #scope_module
@@ -75,7 +67,7 @@ accept_clients :: (server: *Http_Server) {
                     error := LibreSSL.SSL_get_error(client.ssl, result);
                     if error != LibreSSL.SSL_ERROR_WANT_READ && error != LibreSSL.SSL_ERROR_WANT_WRITE {
                         print_ssl_errors();
-                        close(client);
+                        close(server, client);
                         continue;
                     }
                 }
@@ -84,17 +76,17 @@ accept_clients :: (server: *Http_Server) {
 
         success := Socket.set_blocking(socket, false);
         if !success {
-            close(client);
+            close(server, client);
             continue;
         }
 
-        read_data_from_client(client, add = true);
+        read_data_from_client(server, client, add = true);
     }
 }
 
-recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+recv :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> int {
     #if ENABLE_TLS {
-        if client.server.tls {
+        if server.tls {
             return LibreSSL.SSL_read(client.ssl, buffer, xx size);
         }
     }
@@ -102,17 +94,17 @@ recv :: (client: *Http_Client, buffer: *u8, size: int) -> int {
     return Socket.recv(client.socket, buffer, xx size, 0);
 }
 
-read_from_client :: (client: *Http_Client) -> *Message {
+read_from_client :: (server: *Http_Server, client: *Http_Client) -> *Http_Request {
     while true {
         offset := client.request.raw.data + client.request.raw_count;
         max    := client.request.raw.count - client.request.raw_count;
 
-        bytes_read := recv(client, offset, max);
+        bytes_read := recv(server, client, offset, max);
         if bytes_read == -1 {
             error := Socket.get_last_socket_error();
 
             #if ENABLE_TLS {
-                if client.server.tls {
+                if server.tls {
                     if LibreSSL.SSL_get_error(client.ssl, xx bytes_read) == {
                         case LibreSSL.SSL_ERROR_WANT_READ;   #through;
                         case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
@@ -121,7 +113,7 @@ read_from_client :: (client: *Http_Client) -> *Message {
             }
 
             if error != Socket.SOCKET_WOULDBLOCK {
-                close(client);
+                close(server, client);
                 return null;
             }
 
@@ -130,30 +122,21 @@ read_from_client :: (client: *Http_Client) -> *Message {
         }
 
         if bytes_read == 0 {
-            close(client);
+            close(server, client);
             return null;
         }
 
         client.request.raw_count += bytes_read;
 
         if client.request.raw_count == MAX_REQUEST_SIZE {
-            close(client);
+            close(server, client);
             return null;
-        }
-
-        if client.phase == .Web_Socket {
-            frame, error := parse_web_socket_frame(*client.request);
-
-            client.request.type = .Web_Socket;
-            client.request.frame = frame;
-
-            return *client.request;
         }
 
         status := parse_request(client);
         if #complete status == {
             case .Error;
-                close(client);
+                close(server, client);
                 return null;
 
             case .Need_More_Data;
@@ -170,9 +153,9 @@ read_from_client :: (client: *Http_Client) -> *Message {
     return null;
 }
 
-send :: (client: *Http_Client, buffer: *u8, size: int) -> int {
+send :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> int {
     #if ENABLE_TLS {
-        if client.server.tls {
+        if server.tls {
             return LibreSSL.SSL_write(client.ssl, buffer, xx size);
         }
     }
@@ -180,10 +163,10 @@ send :: (client: *Http_Client, buffer: *u8, size: int) -> int {
     return Socket.send(client.socket, buffer, xx size, 0);
 }
 
-send_to_client :: (client: *Http_Client) {
+send_to_client :: (server: *Http_Server, client: *Http_Client) {
     client.handed_off_to_main_loop = false;
     if client.close {
-        close(client);
+        close(server, client);
         return;
     }
 
@@ -194,7 +177,7 @@ send_to_client :: (client: *Http_Client) {
         offset := chunk.buffer.data + chunk.bytes_sent;
         max    := chunk.bytes_to_send - chunk.bytes_sent;
 
-        bytes_sent := send(client, offset, max);
+        bytes_sent := send(server, client, offset, max);
         if bytes_sent == -1 {
             error := Socket.get_last_socket_error();
 
@@ -206,7 +189,7 @@ send_to_client :: (client: *Http_Client) {
             }
 
             if error != Socket.SOCKET_WOULDBLOCK {
-                close(client);
+                close(server, client);
                 return;
             }
 
@@ -223,21 +206,22 @@ send_to_client :: (client: *Http_Client) {
         array_ordered_remove_by_index(*client.chunks_to_send, 0);
 
         if client.chunks_to_send.count > 0 {
-            send_to_client(client);
+            send_to_client(server, client);
             return;
         }
 
         if client.close_after_send {
-            close(client);
+            close(server, client);
             return;
         }
 
-        if client.phase == .Transitioning_To_Web_Socket {
-            client.phase = .Web_Socket;
-        }
+        client.request.uri = "";
+        client.request.method = .GET;
+        client.request.body = "";
+        client.request.raw_count = 0;
+        array_reset(*client.request.headers);
 
-        reset(client);
-        read_data_from_client(client);
+        read_data_from_client(server, client);
     }
 }
 
@@ -247,9 +231,9 @@ process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {
     now := current_time_monotonic();
     earliest := -1;
 
-    for * server.clients {
+    for server.clients {
         if it.timeout <= now {
-            close(it);
+            close(server, it);
             continue;
         }
 

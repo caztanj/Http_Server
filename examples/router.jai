@@ -1,39 +1,39 @@
 main :: () {
-    http_server: Http_Server;
+    server: Http_Server;
 
-    error := init(*http_server, 3000);
+    error := init(*server, 3000);
     if error then return;
 
     router: Http_Router;
-    init(*router);
+    init(*router, *server);
 
-    get(*router, "/", (request: *Http_Request, response: *Http_Response) {
-        html(response, "/");
+    get(*router, "/", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/");
     });
 
-    get(*router, "/hello", (request: *Http_Request, response: *Http_Response) {
-        html(response, "/hello");
+    get(*router, "/hello", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/hello");
     });
 
-    get(*router, "/a/b/c", (request: *Http_Request, response: *Http_Response) {
-        html(response, "/a/b/c");
+    get(*router, "/a/b/c", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/a/b/c");
     });
 
-    get(*router, "/a/d", (request: *Http_Request, response: *Http_Response) {
-        html(response, "/a/d");
+    get(*router, "/a/d", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/a/d");
     });
 
     quit := false;
     while !quit {
-        messages, error := http_server_update(*http_server);
+        requests, error := http_server_update(*server);
         if error then quit = true;
 
-        for messages {
-            handled := http_router_handle_request(*router, it);
+        for requests {
+            handled := http_router_handle_request(*server, *router, it);
             if !handled {
-                response := get_response(it);
-                not_found(response);
-                send_response(response);
+                response := make_response(it,, temp);
+                not_found(*server, response);
+                send_response(*server, response);
             }
         }
 
@@ -41,7 +41,7 @@ main :: () {
     }
 
     fini(*router);
-    shutdown(*http_server);
+    shutdown(*server);
 }
 
 #import "Basic";

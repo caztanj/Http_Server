@@ -53,9 +53,10 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
 }
 
 shutdown :: (server: *Http_Server) {
-    for * server.clients {
-        close(it);
-        fini(it);
+    server.shutdown = true;
+
+    for server.clients {
+        close(server, it);
     }
 
     #if ENABLE_TLS {
@@ -64,11 +65,11 @@ shutdown :: (server: *Http_Server) {
         }
     }
 
-    bucket_array_reset(*server.clients);
+    deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
-    results: [..] *Message;
+http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
+    results: [..] *Http_Request;
     results.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
@@ -91,7 +92,7 @@ http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
         assert(client != null);
 
         if ev.events & Linux.EPOLLIN {
-            message := read_from_client(client);
+            message := read_from_client(server, client);
             if message {
                 array_add(*results, message);
             }
@@ -100,7 +101,7 @@ http_server_update :: (server: *Http_Server) -> [] *Message, error: bool #must {
         }
 
         if ev.events & Linux.EPOLLOUT {
-            send_to_client(client);
+            send_to_client(server, client);
             continue;
         }
 
@@ -122,21 +123,23 @@ Http_Server :: struct {
         ssl_ctx: *LibreSSL.SSL_CTX;
     }
 
-    clients: Bucket_Array(Http_Client, 1024);
+    shutdown: bool;
+
+    clients: Table(Socket.Socket, *Http_Client);
 }
 
 #scope_module
 
-read_data_from_client :: (client: *Http_Client, $add := false) {
+read_data_from_client :: (server: *Http_Server, client: *Http_Client, $add := false) {
     #if add {
-        epoll_add(client.server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
+        epoll_add(server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
     } else {
-        epoll_mod(client.server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
+        epoll_mod(server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLIN);
     }
 }
 
-send_data_to_client :: (client: *Http_Client) {
-    epoll_mod(client.server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLOUT);
+send_data_to_client :: (server: *Http_Server, client: *Http_Client) {
+    epoll_mod(server.epoll, client.socket, Linux.EPOLLET | Linux.EPOLLOUT);
 }
 
 epoll_add :: (epoll: s32, fd: s32, events: u32) -> error: bool {
@@ -157,8 +160,8 @@ epoll_mod :: (epoll: s32, fd: s32, events: u32) -> error: bool {
     return result == -1;
 }
 
-close :: (client: *Http_Client) {
-    if client.handed_off_to_main_loop {
+close :: (server: *Http_Server, client: *Http_Client) {
+    if client.handed_off_to_main_loop && !server.shutdown {
         client.close = true;
         return;
     }
@@ -170,7 +173,7 @@ close :: (client: *Http_Client) {
         }
     }
 
-    Socket.close_and_reset(*client.socket);
-    fini(*client.pool);
-    remove_client(client);
+    socket := client.socket;
+    Socket.close_and_reset(*socket);
+    remove_client(server, client);
 }

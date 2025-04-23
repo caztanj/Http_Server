@@ -1,25 +1,28 @@
 main :: () {
-    http_server: Http_Server;
+    server: Http_Server;
 
-    error := init(*http_server, 3000);
+    error := init(*server, 3000);
     if error then return;
 
     quit := false;
     while !quit {
-        messages, error := http_server_update(*http_server);
+        requests, error := http_server_update(*server);
         if error then quit = true;
 
-        for messages {
-            response := get_response(it);
-            html(response, "<html>Hello</html>");
-            send_response(response);
+        for requests {
+            response := make_response(it,, temp);
+
+            html(*server, response, "<html>Hello</html>");
+            send_response(*server, response);
         }
 
         reset_temporary_storage();
     }
 
-    shutdown(*http_server);
+    shutdown(*server);
+
+    report_memory_leaks();
 }
 
-#import "Basic";
+#import "Basic" () (MEMORY_DEBUGGER = true, TEMP_ALLOCATOR_POISON_FREED_MEMORY = true);
 #import,file "../module.jai";
