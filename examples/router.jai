@@ -23,6 +23,14 @@ main :: () {
         html(server, response, "/a/d");
     });
 
+    get(*router, "/hello/*", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/hello/*");
+    });
+
+    get(*router, "/hello/*/abc", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
+        html(server, response, "/hello/*/abc");
+    });
+
     quit := false;
     while !quit {
         requests, error := http_server_update(*server);

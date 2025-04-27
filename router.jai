@@ -138,7 +138,10 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, reque
         path := tprint("/%", it);
 
         chip = table_find_pointer(chips, path);
-        if chip == null then return false;
+        if chip == null {
+            chip = table_find_pointer(chips, "/*");
+            if chip == null then return false;
+        }
 
         chips = chip.children;
     }
