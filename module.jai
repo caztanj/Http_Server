@@ -451,7 +451,6 @@ add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
 
     init(client, socket);
 
-    // @Todo: Remove client.socket
     client.socket = socket;
 
     set_timeout(client, 5);
