@@ -282,6 +282,7 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
             client.request.t += 1;
             if client.request.t >= client.request.max_t then return .Need_More_Data;
             if client.request.t.* != #char "\n"         then return .Error;
+            client.request.t += 1;
             break;
         }
 
@@ -298,11 +299,12 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     }
 
     if content_length {
-        client.request.t += 1;
         if client.request.t + content_length > client.request.max_t then return .Need_More_Data;
 
         client.request.body.data = client.request.t;
         client.request.body.count = content_length;
+
+        client.request.t += content_length + 1;
     }
 
     return .Success;

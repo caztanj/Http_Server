@@ -66,17 +66,29 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         assert(client != null);
 
         if it.revents & Socket.POLLIN {
-            message := read_from_client(server, client);
-            if message {
-                array_add(*results, message);
-            }
-
-            continue;
+            read_from_client(server, client);
         }
 
         if it.revents & Socket.POLLOUT {
             send_to_client(server, client);
-            continue;
+        }
+
+        // Maybe the client was closed in read_from_client or send_to_client.
+        client = find_client(server, ev.data.fd);
+        if client != null {
+            status := parse_request(client);
+            if #complete status == {
+                case .Error;
+                    close(server, client);
+                    continue;
+
+                case .Need_More_Data;
+                    continue;
+
+                case .Success;
+                    client.handed_off_to_main_loop = true;
+                    array_add(*results, *client.request);
+            }
         }
     }
 

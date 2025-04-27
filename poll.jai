@@ -94,7 +94,7 @@ recv :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
     return Socket.recv(client.socket, buffer, xx size, 0);
 }
 
-read_from_client :: (server: *Http_Server, client: *Http_Client) -> *Http_Request {
+read_from_client :: (server: *Http_Server, client: *Http_Client) {
     while true {
         offset := client.request.raw.data + client.request.raw_count;
         max    := client.request.raw.count - client.request.raw_count;
@@ -114,43 +114,27 @@ read_from_client :: (server: *Http_Server, client: *Http_Client) -> *Http_Reques
 
             if error != Socket.SOCKET_WOULDBLOCK {
                 close(server, client);
-                return null;
+                return;
             }
 
             set_timeout(client, 30);
-            return null;
+            return;
         }
 
         if bytes_read == 0 {
             close(server, client);
-            return null;
+            return;
         }
 
         client.request.raw_count += bytes_read;
 
         if client.request.raw_count == MAX_REQUEST_SIZE {
             close(server, client);
-            return null;
-        }
-
-        status := parse_request(client);
-        if #complete status == {
-            case .Error;
-                close(server, client);
-                return null;
-
-            case .Need_More_Data;
-                continue;
-
-            case .Success;
-                client.handed_off_to_main_loop = true;
-                return *client.request;
+            return;
         }
 
         set_timeout(client, 30);
     }
-
-    return null;
 }
 
 send :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> int {
@@ -218,8 +202,15 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
         client.request.uri = "";
         client.request.method = .GET;
         client.request.body = "";
-        client.request.raw_count = 0;
         array_reset(*client.request.headers);
+
+        if client.request.t < client.request.max_t {
+            count := client.request.max_t - client.request.t;
+            memcpy(client.request.raw.data, client.request.t, count);
+            client.request.raw_count = count;
+        } else {
+            client.request.raw_count = 0;
+        }
 
         read_data_from_client(server, client);
     }
