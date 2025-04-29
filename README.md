@@ -4,11 +4,11 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 
 ## Features
 
-- Partial HTTP/1.1
+- HTTP/1.1
 - Linux (epoll)
 - Windows (Winsock2)
 - TLS (LibreSSL)
-- Basic router
+- Router
 
 ## Compile LibreSSL and Generate Bindings
 
@@ -36,9 +36,7 @@ An additional IOCP backend will be added some time in the future.
   - kqueue
   - TLS
 - Router
-  - Wildcards
   - Parameters
-- Complete HTTP/1.1
 - HTTP/2
 - HTTP/3
 - Web Sockets
