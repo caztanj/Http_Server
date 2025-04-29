@@ -102,36 +102,7 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             send_to_client(server, client);
         }
 
-        // Maybe the client was closed in read_from_client or send_to_client.
-        client = find_client(server, ev.data.fd);
-        if client != null {
-            if client.phase == .Web_Socket {
-                frame, error := parse_web_socket_frame(client,, temp);
-                if error {
-                    // @Todo: .Need_More_Data?
-                    // close(server, client);
-                    continue;
-                }
-
-                web_socket_event := array_add(*web_socket_events);
-                web_socket_event.client_id = client.socket;
-                web_socket_event.frame = *frame;
-            } else {
-                status := parse_request(client);
-                if #complete status == {
-                    case .Error;
-                        close(server, client);
-                        continue;
-
-                    case .Need_More_Data;
-                        continue;
-
-                    case .Success;
-                        client.handed_off_to_main_loop = true;
-                        array_add(*requests, *client.request);
-                }
-            }
-        }
+        maybe_parse_request_or_web_socket_message(server, ev.data.fd, *requests, *web_socket_events);
 
         // @Todo: Handle other epoll events.
     }

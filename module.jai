@@ -486,6 +486,38 @@ set_timeout :: (client: *Http_Client, timeout: int) {
     client.timeout = current_time_monotonic() + seconds_to_apollo(timeout);
 }
 
+maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, requests: *[..] *Http_Request, web_socket_events: *[..] Web_Socket_Event) {
+    client := find_client(server, socket);
+    if client != null {
+        if client.phase == .Web_Socket {
+            frame, error := parse_web_socket_frame(client,, temp);
+            if error {
+                // @Todo: .Need_More_Data?
+                // close(server, client);
+                return;
+            }
+
+            web_socket_event := array_add(web_socket_events);
+            web_socket_event.client_id = client.socket;
+            web_socket_event.frame = *frame;
+        } else {
+            status := parse_request(client);
+            if #complete status == {
+                case .Error;
+                    close(server, client);
+                    return;
+
+                case .Need_More_Data;
+                    return;
+
+                case .Success;
+                    client.handed_off_to_main_loop = true;
+                    array_add(requests, *client.request);
+            }
+        }
+    }
+}
+
 MAX_REQUEST_SIZE :: 65536;
 
 #import "Base64";

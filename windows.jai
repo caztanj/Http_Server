@@ -76,37 +76,7 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             send_to_client(server, client);
         }
 
-        // @Todo: Factor out
-        // Maybe the client was closed in read_from_client or send_to_client.
-        client = find_client(server, it.fd);
-        if client != null {
-            if client.phase == .Web_Socket {
-                frame, error := parse_web_socket_frame(client,, temp);
-                if error {
-                    // @Todo: .Need_More_Data?
-                    // close(server, client);
-                    continue;
-                }
-
-                web_socket_event := array_add(*web_socket_events);
-                web_socket_event.client_id = client.socket;
-                web_socket_event.frame = *frame;
-            } else {
-                status := parse_request(client);
-                if #complete status == {
-                    case .Error;
-                        close(server, client);
-                        continue;
-
-                    case .Need_More_Data;
-                        continue;
-
-                    case .Success;
-                        client.handed_off_to_main_loop = true;
-                        array_add(*requests, *client.request);
-                }
-            }
-        }
+        maybe_parse_request_or_web_socket_message(server, it.fd, *requests, *web_socket_events);
     }
 
     return requests, false, web_socket_events;
