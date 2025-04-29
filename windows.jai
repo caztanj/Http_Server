@@ -49,10 +49,10 @@ shutdown :: (server: *Http_Server) {
 
 http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
     requests: [..] *Http_Request;
-    requests.allocator = temp; // @Todo: Remove
+    requests.allocator = temp;
 
     web_socket_events: [..] Web_Socket_Event;
-    web_socket_events.allocator = temp; // @Todo: Remove
+    web_socket_events.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
@@ -81,7 +81,7 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         client = find_client(server, it.fd);
         if client != null {
             if client.phase == .Web_Socket {
-                frame, error := parse_web_socket_frame(client,, temp); // @Todo: Remove
+                frame, error := parse_web_socket_frame(client,, temp);
                 if error {
                     // @Todo: .Need_More_Data?
                     // close(server, client);
