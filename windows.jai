@@ -74,7 +74,7 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         }
 
         // Maybe the client was closed in read_from_client or send_to_client.
-        client = find_client(server, ev.data.fd);
+        client = find_client(server, it.fd);
         if client != null {
             status := parse_request(client);
             if #complete status == {
