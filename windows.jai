@@ -47,7 +47,6 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-// @Todo: Linux!
 http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
     requests: [..] *Http_Request;
     requests.allocator = temp; // @Todo: Remove
