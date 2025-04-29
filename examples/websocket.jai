@@ -6,36 +6,37 @@ main :: () {
 
     quit := false;
     while !quit {
-        messages, error := http_server_update(*server);
+        requests, error, web_socket_events := http_server_update(*server);
         if error then quit = true;
 
-        for messages {
-            if #complete it.type == {
-                case .Http;
-                    if is_web_socket_upgrade(*it.http_request) {
-                        error := perform_web_socket_upgrade(it);
-                        if error {
-                            response := get_response(it);
-                            not_found(response);
-                            send_response(response);
-                        }
-                    } else {
-                        response := get_response(it);
-                        html(response, "<html>WebSocket</html>");
-                        send_response(response);
-                    }
+        for requests {
+            if is_web_socket_upgrade(it) {
+                error := perform_web_socket_upgrade(*server, it);
+                if error {
+                    response := make_response(it,, temp);
 
-                case .Web_Socket;
-                    print("%\n", it.web_socket_message.frame);
-                    send_web_socket_message(it, "Hello from the server!");
+                    not_found(*server, response);
+                    send_response(*server, response);
+                }
+            } else {
+                response := make_response(it,, temp);
+
+                html(*server, response, "<html>Web Socket</html>");
+                send_response(*server, response);
             }
+        }
+
+        for web_socket_events {
+            print("%\n", cast(string) it.frame.payload);
         }
 
         reset_temporary_storage();
     }
 
-    shutdown(*http_server);
+    shutdown(*server);
+
+    report_memory_leaks();
 }
 
-#import "Basic";
+#import "Basic" () (MEMORY_DEBUGGER = true, TEMP_ALLOCATOR_POISON_FREED_MEMORY = true);
 #import,file "../module.jai" () (ENABLE_TLS = true);

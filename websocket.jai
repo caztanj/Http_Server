@@ -15,8 +15,8 @@ is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     return true;
 }
 
-perform_web_socket_upgrade :: (message: Message) -> error: bool {
-    sec_web_socket_key, error := get_header(message.http_request.headers, "Sec-WebSocket-Key");
+perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> error: bool {
+    sec_web_socket_key, error := get_header(request.headers, "Sec-WebSocket-Key");
     if error then return true;
 
     key_magic := join(sec_web_socket_key, WEB_SOCKET_MAGIC,, temp);
@@ -27,7 +27,7 @@ perform_web_socket_upgrade :: (message: Message) -> error: bool {
 
     accept := base64_encode(xx hash,, temp);
 
-    response := get_response(message);
+    response := make_response(request,, temp);
 
     response.status = .Switching_Protocols;
 
@@ -35,80 +35,97 @@ perform_web_socket_upgrade :: (message: Message) -> error: bool {
     set_header(*response.headers, "Connection", "Upgrade");
     set_header(*response.headers, "Sec-WebSocket-Accept", accept);
 
-    send_response(response);
+    client := find_client(server, request.client_id);
+    if client == null then return true;
 
-    message.client.phase = .Transitioning_To_Web_Socket;
+    client.phase = .Upgrading_To_Web_Socket;
+
+    send_response(server, response);
 
     return false;
 }
 
-send_web_socket_message :: (message: Message, text: string) {
-    frame := Web_Socket_Frame.{
-        fin = true,
-        opcode = .Data_Frame_Text,
-        masked = false,
-        payload_length = xx text.count,
-        payload = xx text,
-    };
+// send_web_socket_message :: (message: Message, text: string) {
+//     frame := Web_Socket_Frame.{
+//         fin = true,
+//         opcode = .Data_Frame_Text,
+//         masked = false,
+//         payload_length = xx text.count,
+//         payload = xx text,
+//     };
 
-    chunk := array_add(*message.client.chunks_to_send);
+//     chunk := array_add(*message.client.chunks_to_send);
 
-    t     := chunk.buffer.data;
-    max_t := t + chunk.buffer.count;
+//     t     := chunk.buffer.data;
+//     max_t := t + chunk.buffer.count;
 
-    if frame.fin {
-        t.* = 0b10000000;
-    }
+//     if frame.fin {
+//         t.* = 0b10000000;
+//     }
 
-    t.* |= xx frame.opcode;
+//     t.* |= xx frame.opcode;
 
-    t += 1;
-    assert(t < max_t);
+//     t += 1;
+//     assert(t < max_t);
 
-    if frame.payload_length < 126 {
-        t.* = xx frame.payload_length;
+//     if frame.payload_length < 126 {
+//         t.* = xx frame.payload_length;
 
-        t += 1;
-        assert(t < max_t);
-    } else {
-        t.* = 127;
+//         t += 1;
+//         assert(t < max_t);
+//     } else {
+//         t.* = 127;
 
-        t += 1;
-        assert(t < max_t);
+//         t += 1;
+//         assert(t < max_t);
 
-        (cast(*u64) t).* = frame.payload_length;
+//         (cast(*u64) t).* = frame.payload_length;
 
-        t += 8;
-        assert(t < max_t);
-    }
+//         t += 8;
+//         assert(t < max_t);
+//     }
 
-    chunk.bytes_to_send = t - chunk.buffer.data;
+//     chunk.bytes_to_send = t - chunk.buffer.data;
 
-    t     = frame.payload.data;
-    max_t = t + frame.payload.count;
+//     t     = frame.payload.data;
+//     max_t = t + frame.payload.count;
 
-    done := false;
-    while !done {
-        chunk := array_add(*message.client.chunks_to_send);
-        count := min(chunk.buffer.count, max_t - t);
+//     done := false;
+//     while !done {
+//         chunk := array_add(*message.client.chunks_to_send);
+//         count := min(chunk.buffer.count, max_t - t);
 
-        memcpy(chunk.buffer.data, t, count);
+//         memcpy(chunk.buffer.data, t, count);
 
-        chunk.bytes_to_send = count;
+//         chunk.bytes_to_send = count;
 
-        t += count;
+//         t += count;
 
-        done = t == max_t;
-    }
+//         done = t == max_t;
+//     }
 
-    send_data_to_client(message.client);
+//     send_data_to_client(message.client);
+// }
+
+Web_Socket_Frame :: struct {
+    fin: bool;
+    opcode: Web_Socket_Opcode;
+    masked: bool;
+    payload_length: u64;
+    masking_key: [4] u8;
+    payload: [..] u8;
+}
+
+Web_Socket_Event :: struct {
+    client_id: Socket.Socket;
+    frame: *Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }
 
 #scope_module
 
-parse_web_socket_frame :: (request: *Message) -> Web_Socket_Frame, error: bool #must {
-    t     := request.raw.data;
-    max_t := t + request.raw_count;
+parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: bool #must {
+    t     := client.request.raw.data;
+    max_t := t + client.request.raw_count;
 
     frame: Web_Socket_Frame;
 
@@ -148,7 +165,8 @@ parse_web_socket_frame :: (request: *Message) -> Web_Socket_Frame, error: bool #
         if t >= max_t then return .{}, true;
     }
 
-    frame.payload.data = t;
+    array_reserve(*frame.payload, xx frame.payload_length);
+    memcpy(frame.payload.data, t, xx frame.payload_length);
     frame.payload.count = xx frame.payload_length;
 
     if frame.masked {
@@ -167,15 +185,6 @@ Web_Socket_Opcode :: enum u8 {
     Control_Frame_Close :: 8;
     Control_Frame_Ping  :: 9;
     Control_Frame_Pong  :: 10;
-}
-
-Web_Socket_Frame :: struct {
-    fin: bool;
-    opcode: Web_Socket_Opcode;
-    masked: bool;
-    payload_length: u64;
-    masking_key: [4] u8;
-    payload: [] u8;
 }
 
 WEB_SOCKET_MAGIC :: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";

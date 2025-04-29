@@ -8,6 +8,7 @@ cert.pem
 key.pem
 *.exe
 *.pdb
+.vs
 
 modules/LibreSSL/.build
 modules/LibreSSL/android

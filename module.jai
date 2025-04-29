@@ -425,8 +425,15 @@ Chunk :: struct {
     bytes_sent:    int;
 }
 
+Http_Client_Phase :: enum {
+    Http;
+    Upgrading_To_Web_Socket;
+    Web_Socket;
+}
+
 Http_Client :: struct {
     socket: Socket.Socket;
+    phase: Http_Client_Phase;
 
     #if ENABLE_TLS {
         ssl: *LibreSSL.SSL;
@@ -494,7 +501,7 @@ Socket :: #import "Socket";
 #load "poll.jai";
 #load "router.jai";
 #load "tests.jai";
-// #load "websocket.jai";
+#load "websocket.jai";
 
 #if ENABLE_TLS {
     create_context :: () -> *LibreSSL.SSL_CTX {

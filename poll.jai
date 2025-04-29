@@ -212,6 +212,10 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
             client.request.raw_count = 0;
         }
 
+        if client.phase == .Upgrading_To_Web_Socket {
+            client.phase = .Web_Socket;
+        }
+
         read_data_from_client(server, client);
     }
 }

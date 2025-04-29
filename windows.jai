@@ -47,14 +47,18 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
-    results: [..] *Http_Request;
-    results.allocator = temp;
+// @Todo: Linux!
+http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
+    requests: [..] *Http_Request;
+    requests.allocator = temp; // @Todo: Remove
+
+    web_socket_events: [..] Web_Socket_Event;
+    web_socket_events.allocator = temp; // @Todo: Remove
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
     nevents := Socket.WSAPoll(server.events.data, xx server.events.count, xx timeout);
-    if nevents == Socket.SOCKET_ERROR then return .[], true;
+    if nevents == Socket.SOCKET_ERROR then return .[], true, .[];
 
     for server.events {
         if it.fd == server.socket {
@@ -73,26 +77,40 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             send_to_client(server, client);
         }
 
+        // @Todo: Factor out
         // Maybe the client was closed in read_from_client or send_to_client.
         client = find_client(server, it.fd);
         if client != null {
-            status := parse_request(client);
-            if #complete status == {
-                case .Error;
-                    close(server, client);
+            if client.phase == .Web_Socket {
+                frame, error := parse_web_socket_frame(client,, temp); // @Todo: Remove
+                if error {
+                    // @Todo: .Need_More_Data?
+                    // close(server, client);
                     continue;
+                }
 
-                case .Need_More_Data;
-                    continue;
+                web_socket_event := array_add(*web_socket_events);
+                web_socket_event.client_id = client.socket;
+                web_socket_event.frame = *frame;
+            } else {
+                status := parse_request(client);
+                if #complete status == {
+                    case .Error;
+                        close(server, client);
+                        continue;
 
-                case .Success;
-                    client.handed_off_to_main_loop = true;
-                    array_add(*results, *client.request);
+                    case .Need_More_Data;
+                        continue;
+
+                    case .Success;
+                        client.handed_off_to_main_loop = true;
+                        array_add(*requests, *client.request);
+                }
             }
         }
     }
 
-    return results, false;
+    return requests, false, web_socket_events;
 }
 
 Http_Server :: struct {

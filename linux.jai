@@ -68,15 +68,18 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must {
-    results: [..] *Http_Request;
-    results.allocator = temp;
+http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
+    requests: [..] *Http_Request;
+    requests.allocator = temp;
+
+    web_socket_events: [..] Web_Socket_Event;
+    web_socket_events.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
     events: [1024] Linux.epoll_event;
     nfds := Linux.epoll_wait(server.epoll, events.data, events.count, xx timeout);
-    if nfds == -1 then return .[], true;
+    if nfds == -1 then return .[], true, .[];
 
     for i: 0..nfds - 1 {
         ev := events[i];
@@ -86,7 +89,7 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             continue;
         }
 
-        if ev.data.fd == server.sigint then return .[], true;
+        if ev.data.fd == server.sigint then return .[], true, .[];
 
         client := find_client(server, ev.data.fd);
         assert(client != null);
@@ -102,25 +105,38 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         // Maybe the client was closed in read_from_client or send_to_client.
         client = find_client(server, ev.data.fd);
         if client != null {
-            status := parse_request(client);
-            if #complete status == {
-                case .Error;
-                    close(server, client);
+            if client.phase == .Web_Socket {
+                frame, error := parse_web_socket_frame(client,, temp);
+                if error {
+                    // @Todo: .Need_More_Data?
+                    // close(server, client);
                     continue;
+                }
 
-                case .Need_More_Data;
-                    continue;
+                web_socket_event := array_add(*web_socket_events);
+                web_socket_event.client_id = client.socket;
+                web_socket_event.frame = *frame;
+            } else {
+                status := parse_request(client);
+                if #complete status == {
+                    case .Error;
+                        close(server, client);
+                        continue;
 
-                case .Success;
-                    client.handed_off_to_main_loop = true;
-                    array_add(*results, *client.request);
+                    case .Need_More_Data;
+                        continue;
+
+                    case .Success;
+                        client.handed_off_to_main_loop = true;
+                        array_add(*requests, *client.request);
+                }
             }
         }
 
         // @Todo: Handle other epoll events.
     }
 
-    return results, false;
+    return requests, false, web_socket_events;
 }
 
 Http_Server :: struct {
@@ -179,7 +195,7 @@ close :: (server: *Http_Server, client: *Http_Client) {
     }
 
     #if ENABLE_TLS {
-        if client.server.tls {
+        if server.tls {
             LibreSSL.SSL_shutdown(client.ssl);
             LibreSSL.SSL_free(client.ssl);
         }
