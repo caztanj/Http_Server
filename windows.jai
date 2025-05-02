@@ -31,8 +31,6 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
 }
 
 shutdown :: (server: *Http_Server) {
-    server.shutdown = true;
-
     for server.clients {
         close(server, it);
     }
@@ -91,8 +89,6 @@ Http_Server :: struct {
         ssl_ctx: *LibreSSL.SSL_CTX;
     }
 
-    shutdown: bool;
-
     events:  [..] Socket.WSAPOLLFD;
     clients: Table(Socket.Socket, *Http_Client);
 }
@@ -126,11 +122,6 @@ poll_mod :: (server: *Http_Server, fd: Socket.Socket, events: s16) {
 }
 
 close :: (server: *Http_Server, client: *Http_Client) {
-    if client.handed_off_to_main_loop && !server.shutdown {
-        client.close = true;
-        return;
-    }
-
     for server.events {
         if it.fd == client.socket {
             remove it;

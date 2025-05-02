@@ -148,12 +148,6 @@ send :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
 }
 
 send_to_client :: (server: *Http_Server, client: *Http_Client) {
-    client.handed_off_to_main_loop = false;
-    if client.close {
-        close(server, client);
-        return;
-    }
-
     assert(client.chunks_to_send.count > 0);
     chunk := *client.chunks_to_send[0];
 

@@ -446,9 +446,6 @@ Http_Client :: struct {
     timeout: Apollo_Time;
 
     close_after_send: bool;
-
-    handed_off_to_main_loop: bool;
-    close: bool;
 }
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
@@ -511,7 +508,6 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     return;
 
                 case .Success;
-                    client.handed_off_to_main_loop = true;
                     array_add(requests, *client.request);
             }
         }
