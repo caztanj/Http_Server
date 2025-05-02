@@ -31,16 +31,12 @@ An additional IOCP backend will be added some time in the future.
 
 ## macOS
 
-The macOS backend uses kqueue.
-
-TLS is not yet enabled.
+The macOS backend uses kqueue and LibreSSL.
 
 ## TODO
 
 - Windows
   - IOCP
-- macOS
-  - TLS
 - Router
   - Parameters
 - HTTP/2
