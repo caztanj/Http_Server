@@ -25,7 +25,7 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
             server.ssl_ctx = create_context();
             if server.ssl_ctx == null then return true;
 
-            error = configure_context(server.ssl_ctx, certificate_file, private_key_file);
+            error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
             if error then return true;
         }
     }
