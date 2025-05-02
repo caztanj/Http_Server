@@ -9,6 +9,7 @@ key.pem
 *.exe
 *.pdb
 .vs
+*.dSYM
 
 modules/LibreSSL/.build
 modules/LibreSSL/android

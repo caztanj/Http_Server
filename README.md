@@ -7,6 +7,7 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 - HTTP/1.1
 - Linux (epoll)
 - Windows (Winsock2)
+- macOS (kqueue)
 - TLS (LibreSSL)
 - Router
 
@@ -28,12 +29,17 @@ The Windows backend uses Winsock2 and LibreSSL.
 
 An additional IOCP backend will be added some time in the future.
 
+## macOS
+
+The macOS backend uses kqueue.
+
+TLS is not yet enabled.
+
 ## TODO
 
 - Windows
   - IOCP
 - macOS
-  - kqueue
   - TLS
 - Router
   - Parameters

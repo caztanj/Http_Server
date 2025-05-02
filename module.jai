@@ -598,3 +598,10 @@ Socket :: #import "Socket";
 
     Windows :: #import "Windows";
 }
+
+#if OS == .MACOS {
+    #load "macos.jai";
+
+    Macos :: #import "macos";
+    POSIX :: #import "POSIX";
+}
