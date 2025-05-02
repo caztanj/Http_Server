@@ -129,10 +129,13 @@ generate :: (args: [] string) -> bool {
             case .LINUX;
                 array_add(*libpaths, "linux");
 
-            case;
+            case .MACOS;
                 output_filename = "macos.jai";
                 array_add(*libpaths, "macos");
                 cpu = CPU;
+
+            case;
+                assert(false, "@Incomplete: os_target == % is currently unsupported.", os_target);
         }
 
         // I'm using the direct source include, as opposed to the includes that get "installed" as part of cmake build like
@@ -237,7 +240,7 @@ libressl_compile :: (os_target: Operating_System_Tag, cpu_target := CPU, build_s
             install_dir  = tprint("%_%_%_install", platform_name, arch_lower_case, shared_or_static);
             build_dir    = tprint("%_%_%_build"  , platform_name, arch_lower_case, shared_or_static);
         }
-    } else  {
+    } else {
         // Put the static and shared pass in separate build dirs so recompilation works.
         install_dir      = tprint("%_%_install", platform_name, shared_or_static);
         build_dir        = tprint("%_%_build"  , platform_name, shared_or_static);
