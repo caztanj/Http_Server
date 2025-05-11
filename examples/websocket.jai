@@ -28,6 +28,7 @@ main :: () {
 
         for web_socket_events {
             print("%\n", cast(string) it.frame.payload);
+            send_web_socket_text(*server, it.client_id, "Hello from Jai!");
         }
 
         reset_temporary_storage();
