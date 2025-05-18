@@ -6,11 +6,13 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update(*server);
+        events, error := http_server_update(*server);
         if error then quit = true;
 
-        for requests {
-            response := make_response(it,, temp);
+        for events {
+            if it.type != .Http_Request then continue;
+
+            response := make_response(it.http_request,, temp);
 
             html(*server, response, "<html>Hello</html>");
             send_response(*server, response);

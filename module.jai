@@ -6,6 +6,34 @@ make_response :: (request: *Http_Request) -> *Http_Response {
     return response;
 }
 
+Http_Event_Type :: enum {
+    Http_Request;
+
+    #if ENABLE_TLS {
+        Web_Socket_Message;
+    }
+
+    Close;
+}
+
+Http_Event :: struct {
+    type: Http_Event_Type;
+
+    union {
+        http_request: *Http_Request;
+
+        #if ENABLE_TLS {
+            web_socket_message: Web_Socket_Message;
+        }
+
+        close_event: Http_Close_Event; // Can be both Http and web socket
+    }
+}
+
+Http_Close_Event :: struct {
+    id: Socket.Socket;
+}
+
 Http_Request :: struct {
     client_id: Socket.Socket;
 
@@ -483,20 +511,23 @@ set_timeout :: (client: *Http_Client, timeout: int) {
     client.timeout = current_time_monotonic() + seconds_to_apollo(timeout);
 }
 
-maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, requests: *[..] *Http_Request, web_socket_events: *[..] Web_Socket_Event) {
+maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, events: *[..] Http_Event) {
     client := find_client(server, socket);
-    if client != null {
+    if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
-            frame, error := parse_web_socket_frame(client,, temp);
-            if error {
-                // @Todo: .Need_More_Data?
-                // close(server, client);
-                return;
-            }
+            #if ENABLE_TLS {
+                frame, error := parse_web_socket_frame(client,, temp);
+                if error {
+                    // @Todo: .Need_More_Data?
+                    // close(server, client);
+                    return;
+                }
 
-            web_socket_event := array_add(web_socket_events);
-            web_socket_event.client_id = client.socket;
-            web_socket_event.frame = *frame;
+                event := array_add(events);
+                event.type = .Web_Socket_Message;
+                event.web_socket_message.client_id = client.socket;
+                event.web_socket_message.frame = *frame;
+            }
         } else {
             status := parse_request(client);
             if #complete status == {
@@ -508,7 +539,9 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     return;
 
                 case .Success;
-                    array_add(requests, *client.request);
+                    event := array_add(events);
+                    event.type = .Http_Request;
+                    event.http_request = *client.request;
             }
         }
     }

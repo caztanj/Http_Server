@@ -124,7 +124,7 @@ Web_Socket_Frame :: struct {
     payload: [..] u8;
 }
 
-Web_Socket_Event :: struct {
+Web_Socket_Message :: struct {
     client_id: Socket.Socket;
     frame: *Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }

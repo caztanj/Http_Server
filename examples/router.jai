@@ -33,13 +33,15 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update(*server);
+        events, error := http_server_update(*server);
         if error then quit = true;
 
-        for requests {
-            handled := http_router_handle_request(*server, *router, it);
+        for events {
+            if it.type != .Http_Request then continue;
+
+            handled := http_router_handle_request(*server, *router, it.http_request);
             if !handled {
-                response := make_response(it,, temp);
+                response := make_response(it.http_request,, temp);
                 not_found(*server, response);
                 send_response(*server, response);
             }

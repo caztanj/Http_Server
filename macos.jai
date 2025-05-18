@@ -50,26 +50,33 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
-    requests: [..] *Http_Request;
-    requests.allocator = temp;
-
-    web_socket_events: [..] Web_Socket_Event;
-    web_socket_events.allocator = temp;
+http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, error: bool #must {
+    events: [..] Http_Event;
+    events.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
     ts: POSIX.timespec;
-    ts.tv_sec = ifx timeout == -1 then 0 else timeout;
+    ts.tv_sec = max(timeout, 0);
 
-    events: [1024] Macos.Kevent64;
-    nfds := Macos.kevent64(server.kqueue, server.kqueue_changes.data, xx server.kqueue_changes.count, events.data, xx events.count, 0, ifx timeout == -1 then null else *ts);
+    if peek then ts.tv_sec = 0;
+
+    kevents: [1024] Macos.Kevent64;
+    nfds := Macos.kevent64(
+        server.kqueue,
+        server.kqueue_changes.data,
+        xx server.kqueue_changes.count,
+        kevents.data,
+        xx kevents.count,
+        0,
+        ifx timeout == -1 && !peek then null else *ts
+    );
     if nfds == -1 then return .[], true, .[];
 
     array_reset_keeping_memory(*server.kqueue_changes);
 
     for i: 0..nfds - 1 {
-        ev := events[i];
+        ev := kevents[i];
 
         if ev.ident == xx server.socket {
             accept_clients(server);
@@ -87,10 +94,18 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             send_to_client(server, client);
         }
 
-        maybe_parse_request_or_web_socket_message(server, xx ev.ident, *requests, *web_socket_events);
+        maybe_parse_request_or_web_socket_message(server, xx ev.ident, *events);
     }
 
-    return requests, false, web_socket_events;
+    for server.closed_sockets {
+        event := array_add(*events);
+        event.type = .Close;
+        event.close_event.id = it;
+    }
+
+    array_reset_keeping_memory(*server.closed_sockets);
+
+    return events, false;
 }
 
 Http_Server :: struct {
@@ -105,6 +120,9 @@ Http_Server :: struct {
 
     kqueue_changes: [..] Macos.Kevent64;
     clients: Table(Socket.Socket, *Http_Client);
+
+    closed_sockets: [..] Socket.Socket;
+    closed_sockets.allocator = temp;
 }
 
 #scope_module
@@ -137,6 +155,8 @@ close :: (server: *Http_Server, client: *Http_Client) {
             LibreSSL.SSL_free(client.ssl);
         }
     }
+
+    array_add(*server.closed_sockets, client.socket);
 
     socket := client.socket;
     Socket.close_and_reset(*socket);

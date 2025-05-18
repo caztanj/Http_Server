@@ -45,17 +45,14 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #must, [] Web_Socket_Event {
-    requests: [..] *Http_Request;
-    requests.allocator = temp;
-
-    web_socket_events: [..] Web_Socket_Event;
-    web_socket_events.allocator = temp;
+http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, error: bool #must {
+    events: [..] Http_Event;
+    events.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
-    nevents := Socket.WSAPoll(server.events.data, xx server.events.count, xx timeout);
-    if nevents == Socket.SOCKET_ERROR then return .[], true, .[];
+    nevents := Socket.WSAPoll(server.events.data, xx server.events.count, xx ifx peek then 0 else timeout);
+    if nevents == Socket.SOCKET_ERROR then return .[], true;
 
     for server.events {
         if it.fd == server.socket {
@@ -66,6 +63,11 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
         client := find_client(server, it.fd);
         assert(client != null);
 
+        if it.revents & Socket.POLLHUP {
+            close(server, client);
+            continue;
+        }
+
         if it.revents & Socket.POLLIN {
             read_from_client(server, client);
         }
@@ -74,10 +76,18 @@ http_server_update :: (server: *Http_Server) -> [] *Http_Request, error: bool #m
             send_to_client(server, client);
         }
 
-        maybe_parse_request_or_web_socket_message(server, it.fd, *requests, *web_socket_events);
+        maybe_parse_request_or_web_socket_message(server, it.fd, *events);
     }
 
-    return requests, false, web_socket_events;
+    for server.closed_sockets {
+        event := array_add(*events);
+        event.type = .Close;
+        event.close_event.id = it;
+    }
+
+    array_reset_keeping_memory(*server.closed_sockets);
+
+    return events, false;
 }
 
 Http_Server :: struct {
@@ -91,6 +101,9 @@ Http_Server :: struct {
 
     events:  [..] Socket.WSAPOLLFD;
     clients: Table(Socket.Socket, *Http_Client);
+
+    closed_sockets: [..] Socket.Socket;
+    closed_sockets.allocator = temp;
 }
 
 #scope_module
@@ -135,6 +148,8 @@ close :: (server: *Http_Server, client: *Http_Client) {
             LibreSSL.SSL_free(client.ssl);
         }
     }
+
+    array_add(*server.closed_sockets, client.socket);
 
     socket := client.socket;
     Socket.close_and_reset(*socket);

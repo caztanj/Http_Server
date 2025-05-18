@@ -6,29 +6,31 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error, web_socket_events := http_server_update(*server);
+        events, error := http_server_update(*server);
         if error then quit = true;
 
-        for requests {
-            if is_web_socket_upgrade(it) {
-                error := perform_web_socket_upgrade(*server, it);
-                if error {
-                    response := make_response(it,, temp);
+        for events {
+            if it.type == .Http_Request {
+                if is_web_socket_upgrade(it.http_request) {
+                    error := perform_web_socket_upgrade(*server, it.http_request);
+                    if error {
+                        response := make_response(it.http_request,, temp);
 
-                    not_found(*server, response);
+                        not_found(*server, response);
+                        send_response(*server, response);
+                    }
+                } else {
+                    response := make_response(it.http_request,, temp);
+
+                    html(*server, response, "<html>Web Socket</html>");
                     send_response(*server, response);
                 }
-            } else {
-                response := make_response(it,, temp);
-
-                html(*server, response, "<html>Web Socket</html>");
-                send_response(*server, response);
             }
-        }
 
-        for web_socket_events {
-            print("%\n", cast(string) it.frame.payload);
-            send_web_socket_text(*server, it.client_id, "Hello from Jai!");
+            if it.type == .Web_Socket_Message {
+                print("%\n", cast(string) it.web_socket_message.frame.payload);
+                send_web_socket_text(*server, it.web_socket_message.client_id, "Hello from Jai!");
+            }
         }
 
         reset_temporary_storage();

@@ -1,4 +1,5 @@
 .build
+examples/event_loop
 examples/example
 examples/tls
 examples/multi_threaded

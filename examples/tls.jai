@@ -6,11 +6,13 @@ main :: () {
 
     quit := false;
     while !quit {
-        requests, error := http_server_update(*server);
+        events, error := http_server_update(*server);
         if error then quit = true;
 
-        for requests {
-            response := make_response(it);
+        for events {
+            if it.type != .Http_Request then continue;
+
+            response := make_response(it.http_request,, temp);
             html(*server, response, "<html>TLS!</html>");
             send_response(*server, response);
         }
