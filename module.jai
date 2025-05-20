@@ -540,9 +540,15 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 }
 
                 event := array_add(events);
-                event.type = .Web_Socket_Message;
-                event.web_socket_message.client_id = client.socket;
-                event.web_socket_message.frame = *frame;
+
+                if frame.opcode == .Control_Frame_Close {
+                    event.type = .Close;
+                    send_web_socket_close_frame(server, client);
+                } else {
+                    event.type = .Web_Socket_Message;
+                    event.web_socket_message.client_id = client.socket;
+                    event.web_socket_message.frame = *frame;
+                }
             }
         } else {
             status := parse_request(client);

@@ -59,57 +59,7 @@ send_web_socket_text :: (server: *Http_Server, client_id: Socket.Socket, text: s
     frame.payload.data = text.data;
     frame.payload.count = text.count;
 
-    chunk := array_add(*client.chunks_to_send);
-
-    t     := chunk.buffer.data;
-    max_t := t + chunk.buffer.count;
-
-    if frame.fin {
-        t.* = 0b10000000;
-    }
-
-    t.* |= xx frame.opcode;
-
-    t += 1;
-    assert(t < max_t);
-
-    if frame.payload_length < 126 {
-        t.* = xx frame.payload_length;
-
-        t += 1;
-        assert(t < max_t);
-    } else {
-        t.* = 127;
-
-        t += 1;
-        assert(t < max_t);
-
-        (cast(*u64) t).* = frame.payload_length;
-
-        t += 8;
-        assert(t < max_t);
-    }
-
-    chunk.bytes_to_send = t - chunk.buffer.data;
-
-    t     = frame.payload.data;
-    max_t = t + frame.payload.count;
-
-    done := false;
-    while !done {
-        chunk := array_add(*client.chunks_to_send);
-        count := min(chunk.buffer.count, max_t - t);
-
-        memcpy(chunk.buffer.data, t, count);
-
-        chunk.bytes_to_send = count;
-
-        t += count;
-
-        done = t == max_t;
-    }
-
-    send_data_to_client(server, client);
+    send_web_socket_frame(server, client, frame);
 
     return false;
 }
@@ -184,6 +134,71 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     }
 
     return frame, false;
+}
+
+send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {
+    frame := Web_Socket_Frame.{
+        fin = true,
+        opcode = .Control_Frame_Close,
+    };
+
+    client.close_after_send = true;
+
+    send_web_socket_frame(server, client, frame);
+}
+
+send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web_Socket_Frame) {
+    chunk := array_add(*client.chunks_to_send);
+
+    t     := chunk.buffer.data;
+    max_t := t + chunk.buffer.count;
+
+    if frame.fin {
+        t.* = 0b10000000;
+    }
+
+    t.* |= xx frame.opcode;
+
+    t += 1;
+    assert(t < max_t);
+
+    if frame.payload_length < 126 {
+        t.* = xx frame.payload_length;
+
+        t += 1;
+        assert(t < max_t);
+    } else {
+        t.* = 127;
+
+        t += 1;
+        assert(t < max_t);
+
+        (cast(*u64) t).* = frame.payload_length;
+
+        t += 8;
+        assert(t < max_t);
+    }
+
+    chunk.bytes_to_send = t - chunk.buffer.data;
+
+    t     = frame.payload.data;
+    max_t = t + frame.payload.count;
+
+    done := false;
+    while !done {
+        chunk := array_add(*client.chunks_to_send);
+        count := min(chunk.buffer.count, max_t - t);
+
+        memcpy(chunk.buffer.data, t, count);
+
+        chunk.bytes_to_send = count;
+
+        t += count;
+
+        done = t == max_t;
+    }
+
+    send_data_to_client(server, client);
 }
 
 Web_Socket_Opcode :: enum u8 {
