@@ -177,7 +177,7 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     memcpy(frame.payload.data, t, xx frame.payload_length);
     frame.payload.count = xx frame.payload_length;
 
-    if frame.masked {
+    if frame.masked && frame.payload_length > 0 {
         for i: 0..frame.payload_length - 1 {
             frame.payload[i] ^= frame.masking_key[i % 4];
         }
