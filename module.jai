@@ -245,6 +245,22 @@ bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
     return false;
 }
 
+internal_server_error :: (server: *Http_Server, response: *Http_Response) -> error: bool {
+    client := find_client(server, response.client_id);
+    if client == null then return true;
+
+    response.status = .Internal_Server_Error;
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
+}
+
 decode_uri :: (uri: string) -> string, error: bool #must {
     b: String_Builder;
     b.allocator = temp;
@@ -561,7 +577,7 @@ Socket :: #import "Socket";
 
 #load "poll.jai";
 #load "router.jai";
-#load "tests.jai";
+#load "tests/tests.jai";
 #load "websocket.jai";
 
 #if ENABLE_TLS {

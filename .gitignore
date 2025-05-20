@@ -24,3 +24,6 @@ modules/LibreSSL/*_static_install
 modules/LibreSSL/unix.jai
 modules/LibreSSL/windows.jai
 modules/LibreSSL/macos.jai
+
+tests/autobahn/reports/*
+tests/autobahn/server
