@@ -65,6 +65,7 @@ send_web_socket_text :: (server: *Http_Server, client_id: Socket.Socket, text: s
 }
 
 Web_Socket_Frame :: struct {
+    // @Todo: Remove this
     client_id: Socket.Socket;
     fin: bool;
     opcode: Web_Socket_Opcode;
@@ -117,10 +118,16 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     }
 
     if frame.masked {
+        if max_t - t < 4 then return .{}, true;
+
         memcpy(frame.masking_key.data, t, 4);
 
         t += 4;
-        if t >= max_t then return .{}, true;
+        if frame.payload_length == 0 {
+            if t != max_t then return .{}, true;
+        } else if t >= max_t {
+            return .{}, true;
+        }
     }
 
     array_reserve(*frame.payload, xx frame.payload_length);
@@ -184,7 +191,7 @@ send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web
     t     = frame.payload.data;
     max_t = t + frame.payload.count;
 
-    done := false;
+    done := t == max_t;
     while !done {
         chunk := array_add(*client.chunks_to_send);
         count := min(chunk.buffer.count, max_t - t);
