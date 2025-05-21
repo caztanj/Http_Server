@@ -281,4 +281,19 @@ Web_Socket_Opcode :: enum u8 {
     Control_Frame_Pong  :: 10;
 }
 
+Web_Socket_Status_Code :: enum {
+    Normal_Closure               :: 1000;
+    Going_Away                   :: 1001;
+    Protocol_Error               :: 1002;
+    Unsupported_Data             :: 1003;
+    No_Code_Received             :: 1005;
+    Connection_Closed_Abnormally :: 1006;
+    Invalid_Payload_Data         :: 1007;
+    Policy_Violated              :: 1008;
+    Message_Too_Big              :: 1009;
+    Unsupported_Extension        :: 1010;
+    Internal_Server_Error        :: 1011;
+    TLS_Handshake_Failure        :: 1015;
+}
+
 WEB_SOCKET_MAGIC :: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
