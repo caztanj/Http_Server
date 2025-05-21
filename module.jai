@@ -34,6 +34,7 @@ Http_Close_Event :: struct {
     id: Socket.Socket;
 }
 
+// @Todo: Allocate dynamic memory in a pool.
 Http_Request :: struct {
     client_id: Socket.Socket;
 

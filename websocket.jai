@@ -112,7 +112,18 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
         t += 1;
         if t >= max_t then return .{}, true;
     } else if frame.payload_length == 127 {
-        frame.payload_length = cast(u64) (t + 2).*;
+        if (t + 7) >= max_t then return .{}, true;
+
+        b1: u64 = t.*.(u64) << 56;
+        b2: u64 = (t + 1).*.(u64) << 48;
+        b3: u64 = (t + 2).*.(u64) << 40;
+        b4: u64 = (t + 3).*.(u64) << 32;
+        b5: u64 = (t + 4).*.(u64) << 24;
+        b6: u64 = (t + 5).*.(u64) << 16;
+        b7: u64 = (t + 6).*.(u64) << 8;
+        b8: u64 = (t + 7).*.(u64);
+
+        frame.payload_length = b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
 
         t += 8;
         if t >= max_t then return .{}, true;
@@ -199,7 +210,14 @@ send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web
             t += 1;
             assert(t < max_t);
 
-            (cast(*u64) t).* = frame.payload_length;
+            (t + 0).* = xx (frame.payload_length >> 56) & 0xFF;
+            (t + 1).* = xx (frame.payload_length >> 48) & 0xFF;
+            (t + 2).* = xx (frame.payload_length >> 40) & 0xFF;
+            (t + 3).* = xx (frame.payload_length >> 32) & 0xFF;
+            (t + 4).* = xx (frame.payload_length >> 24) & 0xFF;
+            (t + 5).* = xx (frame.payload_length >> 16) & 0xFF;
+            (t + 6).* = xx (frame.payload_length >> 8)  & 0xFF;
+            (t + 7).* = xx  frame.payload_length        & 0xFF;
 
             t += 8;
             assert(t < max_t);
