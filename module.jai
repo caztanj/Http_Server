@@ -44,7 +44,7 @@ Http_Request :: struct {
 
     body: string; // View into raw
 
-    raw:       [MAX_REQUEST_SIZE] u8;
+    raw:       [] u8;
     raw_count: int;
 
     t:     *u8;
@@ -494,6 +494,9 @@ Http_Client :: struct {
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
     client.request.client_id = socket;
+
+    // @Performance: Originally I had a fixed size array in the Http_Client instead of allocating it with NewArray. The compiler crashes with a stack overflow if we have too large MAX_REQUEST_SIZE so I switched to doing this. The performance dropped significantly so we need to revisit this in the future.
+    client.request.raw = NewArray(MAX_REQUEST_SIZE, u8);
 }
 
 add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
@@ -569,7 +572,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
     }
 }
 
-MAX_REQUEST_SIZE :: 65536;
+MAX_REQUEST_SIZE :: 65536 * 2;
 
 #import "Base64";
 #import "Basic";

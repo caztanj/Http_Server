@@ -101,7 +101,8 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     if t >= max_t then return .{}, true;
 
     if frame.payload_length == 126 {
-        frame.payload_length = t.* << 8;
+        frame.payload_length = t.*;
+        frame.payload_length <<= 8;
 
         t += 1;
         if t >= max_t then return .{}, true;
@@ -129,6 +130,8 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
             return .{}, true;
         }
     }
+
+    if max_t - t != xx frame.payload_length then return .{}, true;
 
     array_reserve(*frame.payload, xx frame.payload_length);
     memcpy(frame.payload.data, t, xx frame.payload_length);
@@ -181,7 +184,7 @@ send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web
             t += 1;
             assert(t < max_t);
 
-            t.* = xx frame.payload_length & 0b1111111100000000;
+            t.* = xx (frame.payload_length & 0b1111111100000000) >> 8;
 
             t += 1;
             assert(t < max_t);
