@@ -29,7 +29,7 @@ main :: () {
 
             if it.type == .Web_Socket_Message {
                 print("%\n", cast(string) it.web_socket_message.frame.payload);
-                send_web_socket_text(*server, it.web_socket_message.client_id, "Hello from Jai!");
+                send_web_socket_text(*server, it.web_socket_message.id, "Hello from Jai!");
             }
         }
 

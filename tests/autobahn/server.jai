@@ -31,7 +31,7 @@ main :: () {
             }
 
             if it.type == .Web_Socket_Message {
-                send_web_socket_text(*server, it.web_socket_message.client_id, cast(string) it.web_socket_message.frame.payload);
+                send_web_socket_text(*server, it.web_socket_message.id, cast(string) it.web_socket_message.frame.payload);
             }
         }
 

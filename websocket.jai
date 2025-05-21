@@ -35,7 +35,7 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     set_header(*response.headers, "Connection", "Upgrade");
     set_header(*response.headers, "Sec-WebSocket-Accept", accept);
 
-    client := find_client(server, request.client_id);
+    client := find_client(server, request.id);
     if client == null then return true;
 
     client.phase = .Upgrading_To_Web_Socket;
@@ -45,8 +45,8 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     return false;
 }
 
-send_web_socket_text :: (server: *Http_Server, client_id: Socket.Socket, text: string) -> error: bool {
-    client := find_client(server, client_id);
+send_web_socket_text :: (server: *Http_Server, id: Socket.Socket, text: string) -> error: bool {
+    client := find_client(server, id);
     if client == null then return true;
 
     frame := Web_Socket_Frame.{
@@ -66,7 +66,7 @@ send_web_socket_text :: (server: *Http_Server, client_id: Socket.Socket, text: s
 
 Web_Socket_Frame :: struct {
     // @Todo: Remove this
-    client_id: Socket.Socket;
+    id: Socket.Socket;
     fin: bool;
     opcode: Web_Socket_Opcode;
     masked: bool;
@@ -76,7 +76,7 @@ Web_Socket_Frame :: struct {
 }
 
 Web_Socket_Message :: struct {
-    client_id: Socket.Socket;
+    id: Socket.Socket;
     frame: *Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }
 

@@ -1,5 +1,5 @@
 send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.client_id);
+    client := find_client(server, response.id);
     if client == null then return true;
 
     assert(response.status != .None);

@@ -2,7 +2,7 @@
 
 make_response :: (request: *Http_Request) -> *Http_Response {
     response := New(Http_Response);
-    response.client_id = request.client_id;
+    response.id = request.id;
     return response;
 }
 
@@ -36,7 +36,7 @@ Http_Close_Event :: struct {
 
 // @Todo: Allocate dynamic memory in a pool.
 Http_Request :: struct {
-    client_id: Socket.Socket;
+    id: Socket.Socket;
 
     uri:    string;
     method: Http_Method;
@@ -53,7 +53,7 @@ Http_Request :: struct {
 }
 
 Http_Response :: struct {
-    client_id: Socket.Socket;
+    id: Socket.Socket;
 
     status: Http_Response_Status;
 
@@ -193,7 +193,7 @@ get_header :: (headers: [] Http_Header, key: string) -> string, error: bool #mus
 }
 
 html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
-    client := find_client(server, response.client_id);
+    client := find_client(server, response.id);
     if client == null then return true;
 
     response.status = .Ok;
@@ -213,7 +213,7 @@ html :: (server: *Http_Server, response: *Http_Response, html: string) -> error:
 }
 
 not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.client_id);
+    client := find_client(server, response.id);
     if client == null then return true;
 
     response.status = .Not_Found;
@@ -231,7 +231,7 @@ not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 }
 
 bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.client_id);
+    client := find_client(server, response.id);
     if client == null then return true;
 
     response.status = .Bad_Request;
@@ -247,7 +247,7 @@ bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 }
 
 internal_server_error :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.client_id);
+    client := find_client(server, response.id);
     if client == null then return true;
 
     response.status = .Internal_Server_Error;
@@ -494,7 +494,7 @@ Http_Client :: struct {
 }
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
-    client.request.client_id = socket;
+    client.request.id = socket;
 
     // @Performance: Originally I had a fixed size array in the Http_Client instead of allocating it with NewArray. The compiler crashes with a stack overflow if we have too large MAX_REQUEST_SIZE so I switched to doing this. The performance dropped significantly so we need to revisit this in the future.
     client.request.raw = NewArray(MAX_REQUEST_SIZE, u8);
@@ -550,7 +550,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     send_web_socket_close_frame(server, client);
                 } else {
                     event.type = .Web_Socket_Message;
-                    event.web_socket_message.client_id = client.socket;
+                    event.web_socket_message.id = client.socket;
                     event.web_socket_message.frame = *frame;
                 }
             }
