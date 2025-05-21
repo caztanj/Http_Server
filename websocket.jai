@@ -52,12 +52,29 @@ send_web_socket_text :: (server: *Http_Server, id: Socket.Socket, text: string) 
     frame := Web_Socket_Frame.{
         fin = true,
         opcode = .Data_Frame_Text,
-        masked = false,
         payload_length = xx text.count,
     };
 
     frame.payload.data = text.data;
     frame.payload.count = text.count;
+
+    send_web_socket_frame(server, client, frame);
+
+    return false;
+}
+
+send_web_socket_blob :: (server: *Http_Server, id: Socket.Socket, data: [] u8) -> error: bool {
+    client := find_client(server, id);
+    if client == null then return true;
+
+    frame := Web_Socket_Frame.{
+        fin = true,
+        opcode = .Data_Frame_Binary,
+        payload_length = xx data.count,
+    };
+
+    frame.payload.data = data.data;
+    frame.payload.count = data.count;
 
     send_web_socket_frame(server, client, frame);
 
@@ -75,8 +92,14 @@ Web_Socket_Frame :: struct {
     payload: [..] u8;
 }
 
+Web_Socket_Message_Type :: enum {
+    Text;
+    Binary;
+}
+
 Web_Socket_Message :: struct {
     id: Socket.Socket;
+    type: Web_Socket_Message_Type;
     frame: *Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }
 
@@ -114,6 +137,8 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     } else if frame.payload_length == 127 {
         if (t + 7) >= max_t then return .{}, true;
 
+        // @Robustness
+
         b1: u64 = t.*.(u64) << 56;
         b2: u64 = (t + 1).*.(u64) << 48;
         b3: u64 = (t + 2).*.(u64) << 40;
@@ -144,6 +169,7 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
 
     if max_t - t != xx frame.payload_length then return .{}, true;
 
+    // @Todo: I think we are leaking this.
     array_reserve(*frame.payload, xx frame.payload_length);
     memcpy(frame.payload.data, t, xx frame.payload_length);
     frame.payload.count = xx frame.payload_length;

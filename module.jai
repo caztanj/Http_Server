@@ -550,6 +550,15 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     send_web_socket_close_frame(server, client);
                 } else {
                     event.type = .Web_Socket_Message;
+
+                    if frame.opcode == {
+                        case .Data_Frame_Text;
+                            event.web_socket_message.type = .Text;
+
+                        case .Data_Frame_Binary;
+                            event.web_socket_message.type = .Binary;
+                    }
+
                     event.web_socket_message.id = client.socket;
                     event.web_socket_message.frame = *frame;
                 }

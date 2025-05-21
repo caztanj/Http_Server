@@ -31,7 +31,13 @@ main :: () {
             }
 
             if it.type == .Web_Socket_Message {
-                send_web_socket_text(*server, it.web_socket_message.id, cast(string) it.web_socket_message.frame.payload);
+                if #complete it.web_socket_message.type == {
+                    case .Text;
+                        send_web_socket_text(*server, it.web_socket_message.id, cast(string) it.web_socket_message.frame.payload);
+
+                    case .Binary;
+                        send_web_socket_blob(*server, it.web_socket_message.id, xx cast(string) it.web_socket_message.frame.payload);
+                }
             }
         }
 
