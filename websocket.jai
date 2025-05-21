@@ -169,21 +169,38 @@ send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web
     t += 1;
     assert(t < max_t);
 
-    if frame.payload_length < 126 {
+    if frame.payload_length <= 125 {
         t.* = xx frame.payload_length;
 
         t += 1;
         assert(t < max_t);
     } else {
-        t.* = 127;
+        if frame.payload_length <= 65535 {
+            t.* = 126;
 
-        t += 1;
-        assert(t < max_t);
+            t += 1;
+            assert(t < max_t);
 
-        (cast(*u64) t).* = frame.payload_length;
+            t.* = xx frame.payload_length & 0b1111111100000000;
 
-        t += 8;
-        assert(t < max_t);
+            t += 1;
+            assert(t < max_t);
+
+            t.* = xx frame.payload_length & 0b11111111;
+
+            t += 1;
+            assert(t < max_t);
+        } else {
+            t.* = 127;
+
+            t += 1;
+            assert(t < max_t);
+
+            (cast(*u64) t).* = frame.payload_length;
+
+            t += 8;
+            assert(t < max_t);
+        }
     }
 
     chunk.bytes_to_send = t - chunk.buffer.data;
