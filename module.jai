@@ -550,7 +550,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         send_web_socket_close_frame(server, client);
 
                     case .Control_Frame_Ping;
-                        send_web_socket_pong(server, client);
+                        send_web_socket_pong(server, client, frame);
 
                     case;
                         event := array_add(events);

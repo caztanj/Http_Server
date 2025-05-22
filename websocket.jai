@@ -194,10 +194,12 @@ send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {
     send_web_socket_frame(server, client, frame);
 }
 
-send_web_socket_pong :: (server: *Http_Server, client: *Http_Client) {
+send_web_socket_pong :: (server: *Http_Server, client: *Http_Client, ping_frame: Web_Socket_Frame) {
     frame := Web_Socket_Frame.{
         fin = true,
         opcode = .Control_Frame_Pong,
+        payload_length = ping_frame.payload_length,
+        payload = ping_frame.payload,
     };
 
     send_web_socket_frame(server, client, frame);
