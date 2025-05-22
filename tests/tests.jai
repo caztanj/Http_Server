@@ -25,7 +25,7 @@
         assert(client.request.uri == "/");
         assert(client.request.body.count == 0);
 
-        header_value, error := get_header(client.request.headers, "Host");
+        error, header_value := get_header(client.request.headers, "Host");
         assert(!error);
         assert(header_value == "example.com");
     }
@@ -38,11 +38,11 @@
         assert(client.request.uri == "/");
         assert(client.request.body.count == 0);
 
-        header_value, error := get_header(client.request.headers, "Host");
+        error, header_value := get_header(client.request.headers, "Host");
         assert(!error);
         assert(header_value == "example.com");
 
-        header_value, error = get_header(client.request.headers, "Connection");
+        error, header_value = get_header(client.request.headers, "Connection");
         assert(!error);
         assert(header_value == "keep-alive");
     }
@@ -214,67 +214,67 @@
 
 #run {
     {
-        result, error := decode_uri("%20");
+        error, result := decode_uri("%20");
         assert(!error);
         assert(result == " ");
     }
 
     {
-        result, error := decode_uri("abc%20123");
+        error, result := decode_uri("abc%20123");
         assert(!error);
         assert(result == "abc 123");
     }
 
     {
-        result, error := decode_uri("%21abc%20123%22");
+        error, result := decode_uri("%21abc%20123%22");
         assert(!error);
         assert(result == "!abc 123\"");
     }
 
     {
-        result, error := decode_uri("abc123");
+        error, result := decode_uri("abc123");
         assert(!error);
         assert(result == "abc123");
     }
 
     {
-        result, error := decode_uri("%");
+        error, result := decode_uri("%");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("%2");
+        error, result := decode_uri("%2");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("%%");
+        error, result := decode_uri("%%");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("abc%");
+        error, result := decode_uri("abc%");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("%abc");
+        error, result := decode_uri("%abc");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("%20%2a");
+        error, result := decode_uri("%20%2a");
         assert(error);
         assert(result == "");
     }
 
     {
-        result, error := decode_uri("");
+        error, result := decode_uri("");
         assert(!error);
         assert(result == "");
     }

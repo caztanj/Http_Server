@@ -66,7 +66,7 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, error: bool #must {
+http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] Http_Event {
     events: [..] Http_Event;
     events.allocator = temp;
 
@@ -74,7 +74,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
 
     epoll_events: [1024] Linux.epoll_event;
     nfds := Linux.epoll_wait(server.epoll, epoll_events.data, epoll_events.count, xx ifx peek then 0 else timeout);
-    if nfds == -1 then return .[], true;
+    if nfds == -1 then return true, .[];
 
     for i: 0..nfds - 1 {
         ev := epoll_events[i];
@@ -84,7 +84,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
             continue;
         }
 
-        if ev.data.fd == server.sigint then return .[], true;
+        if ev.data.fd == server.sigint then return true, .[];
 
         client := find_client(server, ev.data.fd);
         assert(client != null);
@@ -110,7 +110,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
 
     array_reset_keeping_memory(*server.closed_sockets);
 
-    return events, false;
+    return false, events;
 }
 
 Http_Server :: struct {

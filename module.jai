@@ -184,12 +184,12 @@ set_header :: (headers: *[..] Http_Header, key: string, value: string) {
     array_add(headers, header);
 }
 
-get_header :: (headers: [] Http_Header, key: string) -> string, error: bool #must {
+get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
     for headers {
-        if equal_nocase(it.key, key) then return it.value, false;
+        if equal_nocase(it.key, key) then return false, it.value;
     }
 
-    return "", true;
+    return true, "";
 }
 
 html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
@@ -262,7 +262,7 @@ internal_server_error :: (server: *Http_Server, response: *Http_Response) -> err
     return false;
 }
 
-decode_uri :: (uri: string) -> string, error: bool #must {
+decode_uri :: (uri: string) -> error: bool, string {
     b: String_Builder;
     b.allocator = temp;
 
@@ -274,13 +274,13 @@ decode_uri :: (uri: string) -> string, error: bool #must {
     while t < max_t {
         if t.* == #char "%" {
             t += 2;
-            if t >= max_t then return "", true;
+            if t >= max_t then return true, "";
 
             current.data = t - 1;
-            if !is_digits(current) then return "", true;
+            if !is_digits(current) then return true, "";
 
             result, success := string_to_int(current, 16, u8);
-            if !success then return "", true;
+            if !success then return true, "";
 
             append(*b, *result, 1);
         } else {
@@ -290,7 +290,7 @@ decode_uri :: (uri: string) -> string, error: bool #must {
         t += 1;
     }
 
-    return builder_to_string(*b), false;
+    return false, builder_to_string(*b);
 }
 
 #scope_module
@@ -515,7 +515,7 @@ add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
 }
 
 find_client :: (server: *Http_Server, id: Socket.Socket) -> *Http_Client {
-    client, success := table_find(*server.clients, id);
+    success, client := table_find_new(*server.clients, id);
     if !success then return null;
     return client;
 }
@@ -536,7 +536,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
     if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
             #if ENABLE_TLS {
-                frame, status := parse_web_socket_frame(client,, temp);
+                status, frame := parse_web_socket_frame(client,, temp);
                 if status == .Need_More_Data {
                     return;
                 }
@@ -619,7 +619,7 @@ Socket :: #import "Socket";
         return ctx;
     }
 
-    configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool #must {
+    configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool {
         if LibreSSL.SSL_CTX_use_certificate_file(ctx, temp_c_string(certificate_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
             print_ssl_errors();
             return true;

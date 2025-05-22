@@ -8,7 +8,7 @@ main :: () {
     }
 
     while true {
-        events, error := http_server_update(*server);
+        error, events := http_server_update(*server);
         if error {
             log_error("http_server_update error.");
             exit(1);

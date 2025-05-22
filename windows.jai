@@ -45,14 +45,14 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, error: bool #must {
+http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] Http_Event {
     events: [..] Http_Event;
     events.allocator = temp;
 
     timeout := process_timeouts_and_get_next_timeout(server);
 
     nevents := Socket.WSAPoll(server.events.data, xx server.events.count, xx ifx peek then 0 else timeout);
-    if nevents == Socket.SOCKET_ERROR then return .[], true;
+    if nevents == Socket.SOCKET_ERROR then return true, .[];
 
     for server.events {
         if it.fd == server.socket {
@@ -87,7 +87,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
 
     array_reset_keeping_memory(*server.closed_sockets);
 
-    return events, false;
+    return false, events;
 }
 
 Http_Server :: struct {

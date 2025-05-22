@@ -50,7 +50,7 @@ shutdown :: (server: *Http_Server) {
     deinit(*server.clients);
 }
 
-http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, error: bool #must {
+http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] Http_Event {
     events: [..] Http_Event;
     events.allocator = temp;
 
@@ -71,7 +71,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
         0,
         ifx timeout == -1 && !peek then null else *ts
     );
-    if nfds == -1 then return .[], true, .[];
+    if nfds == -1 then return true, .[];
 
     array_reset_keeping_memory(*server.kqueue_changes);
 
@@ -105,7 +105,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> [] Http_Event, er
 
     array_reset_keeping_memory(*server.closed_sockets);
 
-    return events, false;
+    return false, events;
 }
 
 Http_Server :: struct {
