@@ -194,6 +194,15 @@ send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {
     send_web_socket_frame(server, client, frame);
 }
 
+send_web_socket_pong :: (server: *Http_Server, client: *Http_Client) {
+    frame := Web_Socket_Frame.{
+        fin = true,
+        opcode = .Control_Frame_Pong,
+    };
+
+    send_web_socket_frame(server, client, frame);
+}
+
 send_web_socket_frame :: (server: *Http_Server, client: *Http_Client, frame: Web_Socket_Frame) {
     chunk := array_add(*client.chunks_to_send);
 

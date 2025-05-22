@@ -82,12 +82,12 @@ Http_Header :: struct {
 
 #insert -> string {
     Http_Response_Status_Spec :: struct {
-        key:    string;
+        key:         string;
         code:        int;
         description: string;
     }
 
-    response_status : [] Http_Response_Status_Spec = .[
+    response_status: [] Http_Response_Status_Spec = .[
         .{ "None", 0, "None" },
 
         .{ "Continue",            100, "Continue" },
@@ -543,24 +543,29 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     return;
                 }
 
-                event := array_add(events);
+                if frame.opcode == {
+                    case .Control_Frame_Close;
+                        event := array_add(events);
+                        event.type = .Close;
+                        send_web_socket_close_frame(server, client);
 
-                if frame.opcode == .Control_Frame_Close {
-                    event.type = .Close;
-                    send_web_socket_close_frame(server, client);
-                } else {
-                    event.type = .Web_Socket_Message;
+                    case .Control_Frame_Ping;
+                        send_web_socket_pong(server, client);
 
-                    if frame.opcode == {
-                        case .Data_Frame_Text;
-                            event.web_socket_message.type = .Text;
+                    case;
+                        event := array_add(events);
+                        event.type = .Web_Socket_Message;
 
-                        case .Data_Frame_Binary;
-                            event.web_socket_message.type = .Binary;
-                    }
+                        if frame.opcode == {
+                            case .Data_Frame_Text;
+                                event.web_socket_message.type = .Text;
 
-                    event.web_socket_message.id = client.socket;
-                    event.web_socket_message.frame = *frame;
+                            case .Data_Frame_Binary;
+                                event.web_socket_message.type = .Binary;
+                        }
+
+                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.frame = *frame;
                 }
             }
         } else {
