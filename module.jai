@@ -531,31 +531,36 @@ set_timeout :: (client: *Http_Client, timeout: int) {
     client.timeout = current_time_monotonic() + seconds_to_apollo(timeout);
 }
 
-maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, events: *[..] Http_Event) {
+maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, events: *[..] Http_Event) -> again: bool {
     client := find_client(server, socket);
     if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
             #if ENABLE_TLS {
                 status, frame := parse_web_socket_frame(client,, temp);
                 if status == .Need_More_Data {
-                    return;
+                    return false;
                 }
 
                 if status == .Error {
                     close(server, client);
-                    return;
+                    return false;
                 }
 
                 if frame.opcode == {
                     case .Control_Frame_Close;
                         event := array_add(events);
                         event.type = .Close;
+
+                        // @Todo: Only send if we have not done so yet.
                         send_web_socket_close_frame(server, client);
 
                     case .Control_Frame_Ping;
                         send_web_socket_pong(server, client, frame);
 
-                    case;
+                    case .Control_Frame_Pong;
+
+                    case .Data_Frame_Text;  #through;
+                    case .Data_Frame_Binary;
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
 
@@ -568,7 +573,15 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         }
 
                         event.web_socket_message.id = client.socket;
-                        event.web_socket_message.frame = *frame;
+                        event.web_socket_message.frame = frame;
+                }
+
+                if client.request.t < client.request.max_t {
+                    count := client.request.max_t - client.request.t;
+                    memcpy(client.request.raw.data, client.request.t, count);
+                    client.request.raw_count = count;
+
+                    return true;
                 }
             }
         } else {
@@ -576,10 +589,10 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
             if #complete status == {
                 case .Error;
                     close(server, client);
-                    return;
+                    return false;
 
                 case .Need_More_Data;
-                    return;
+                    return false;
 
                 case .Success;
                     event := array_add(events);
@@ -588,6 +601,8 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
             }
         }
     }
+
+    return false;
 }
 
 MAX_REQUEST_SIZE :: 65536 * 2;

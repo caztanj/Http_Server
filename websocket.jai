@@ -100,7 +100,7 @@ Web_Socket_Message_Type :: enum {
 Web_Socket_Message :: struct {
     id: Socket.Socket;
     type: Web_Socket_Message_Type;
-    frame: *Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
+    frame: Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }
 
 #scope_module
@@ -112,74 +112,74 @@ Parse_Web_Socket_Frame_Status :: enum {
 }
 
 parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Status, Web_Socket_Frame {
-    t     := client.request.raw.data;
-    max_t := t + client.request.raw_count;
+    client.request.t     = client.request.raw.data;
+    client.request.max_t = client.request.t + client.request.raw_count;
 
     frame: Web_Socket_Frame;
 
-    frame.fin = xx t.* & 0b10000000;
-    frame.opcode = xx t.* & 0b00001111;
+    frame.fin = xx client.request.t.* & 0b10000000;
+    frame.opcode = xx client.request.t.* & 0b00001111;
 
-    t += 1;
-    if t >= max_t then return .Need_More_Data, .{};
+    client.request.t += 1;
+    if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
 
-    frame.masked = xx t.* & 0b10000000;
-    frame.payload_length = t.* & 0b01111111;
+    frame.masked = xx client.request.t.* & 0b10000000;
+    frame.payload_length = client.request.t.* & 0b01111111;
 
-    t += 1;
-    if t >= max_t then return .Need_More_Data, .{};
+    client.request.t += 1;
+    if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
 
     if frame.payload_length == 126 {
-        frame.payload_length = t.*;
+        frame.payload_length = client.request.t.*;
         frame.payload_length <<= 8;
 
-        t += 1;
-        if t >= max_t then return .Need_More_Data, .{};
+        client.request.t += 1;
+        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
 
-        frame.payload_length |= t.*;
+        frame.payload_length |= client.request.t.*;
 
-        t += 1;
-        if t >= max_t then return .Need_More_Data, .{};
+        client.request.t += 1;
+        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
     } else if frame.payload_length == 127 {
-        if (t + 7) >= max_t then return .Need_More_Data, .{};
+        if (client.request.t + 7) >= client.request.max_t then return .Need_More_Data, .{};
 
         // @Robustness
 
-        b1: u64 = t.*.(u64) << 56;
-        b2: u64 = (t + 1).*.(u64) << 48;
-        b3: u64 = (t + 2).*.(u64) << 40;
-        b4: u64 = (t + 3).*.(u64) << 32;
-        b5: u64 = (t + 4).*.(u64) << 24;
-        b6: u64 = (t + 5).*.(u64) << 16;
-        b7: u64 = (t + 6).*.(u64) << 8;
-        b8: u64 = (t + 7).*.(u64);
+        b1: u64 = client.request.t.*.(u64) << 56;
+        b2: u64 = (client.request.t + 1).*.(u64) << 48;
+        b3: u64 = (client.request.t + 2).*.(u64) << 40;
+        b4: u64 = (client.request.t + 3).*.(u64) << 32;
+        b5: u64 = (client.request.t + 4).*.(u64) << 24;
+        b6: u64 = (client.request.t + 5).*.(u64) << 16;
+        b7: u64 = (client.request.t + 6).*.(u64) << 8;
+        b8: u64 = (client.request.t + 7).*.(u64);
 
         frame.payload_length = b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
 
-        t += 8;
-        if t >= max_t then return .Need_More_Data, .{};
+        client.request.t += 8;
+        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
     }
 
     if frame.masked {
-        if max_t - t < 4 then return .Need_More_Data, .{};
+        if client.request.max_t - client.request.t < 4 then return .Need_More_Data, .{};
 
-        memcpy(frame.masking_key.data, t, 4);
+        memcpy(frame.masking_key.data, client.request.t, 4);
 
-        t += 4;
+        client.request.t += 4;
         if frame.payload_length == 0 {
-            if t != max_t then return .Need_More_Data, .{};
-        } else if t >= max_t {
+            return .Success, frame;
+        } else if client.request.t >= client.request.max_t {
             return .Need_More_Data, .{};
         }
     }
 
     if frame.opcode == .Control_Frame_Ping && frame.payload_length > 125 then return .Error, .{};
 
-    if max_t - t != xx frame.payload_length then return .Need_More_Data, .{};
+    if xx (client.request.max_t - client.request.t) < frame.payload_length then return .Need_More_Data, .{};
 
     // @Todo: I think we are leaking this.
     array_reserve(*frame.payload, xx frame.payload_length);
-    memcpy(frame.payload.data, t, xx frame.payload_length);
+    memcpy(frame.payload.data, client.request.t, xx frame.payload_length);
     frame.payload.count = xx frame.payload_length;
 
     if frame.masked && frame.payload_length > 0 {
@@ -187,6 +187,8 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
             frame.payload[i] ^= frame.masking_key[i % 4];
         }
     }
+
+    client.request.t += frame.payload.count;
 
     return .Success, frame;
 }

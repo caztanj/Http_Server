@@ -91,13 +91,16 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
 
         if ev.events & Linux.EPOLLIN {
             read_from_client(server, client);
+
+            again := true;
+            while again {
+                again = maybe_parse_request_or_web_socket_message(server, ev.data.fd, *events);
+            }
         }
 
         if ev.events & Linux.EPOLLOUT {
             send_to_client(server, client);
         }
-
-        maybe_parse_request_or_web_socket_message(server, ev.data.fd, *events);
 
         // @Todo: Handle other epoll events.
     }
