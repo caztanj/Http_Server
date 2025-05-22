@@ -105,7 +105,13 @@ Web_Socket_Message :: struct {
 
 #scope_module
 
-parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: bool #must {
+Parse_Web_Socket_Frame_Status :: enum {
+    Need_More_Data;
+    Error;
+    Success;
+}
+
+parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, status: Parse_Web_Socket_Frame_Status #must {
     t     := client.request.raw.data;
     max_t := t + client.request.raw_count;
 
@@ -115,27 +121,27 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
     frame.opcode = xx t.* & 0b00001111;
 
     t += 1;
-    if t >= max_t then return .{}, true;
+    if t >= max_t then return .{}, .Need_More_Data;
 
     frame.masked = xx t.* & 0b10000000;
     frame.payload_length = t.* & 0b01111111;
 
     t += 1;
-    if t >= max_t then return .{}, true;
+    if t >= max_t then return .{}, .Need_More_Data;
 
     if frame.payload_length == 126 {
         frame.payload_length = t.*;
         frame.payload_length <<= 8;
 
         t += 1;
-        if t >= max_t then return .{}, true;
+        if t >= max_t then return .{}, .Need_More_Data;
 
         frame.payload_length |= t.*;
 
         t += 1;
-        if t >= max_t then return .{}, true;
+        if t >= max_t then return .{}, .Need_More_Data;
     } else if frame.payload_length == 127 {
-        if (t + 7) >= max_t then return .{}, true;
+        if (t + 7) >= max_t then return .{}, .Need_More_Data;
 
         // @Robustness
 
@@ -151,23 +157,25 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
         frame.payload_length = b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
 
         t += 8;
-        if t >= max_t then return .{}, true;
+        if t >= max_t then return .{}, .Need_More_Data;
     }
 
     if frame.masked {
-        if max_t - t < 4 then return .{}, true;
+        if max_t - t < 4 then return .{}, .Need_More_Data;
 
         memcpy(frame.masking_key.data, t, 4);
 
         t += 4;
         if frame.payload_length == 0 {
-            if t != max_t then return .{}, true;
+            if t != max_t then return .{}, .Need_More_Data;
         } else if t >= max_t {
-            return .{}, true;
+            return .{}, .Need_More_Data;
         }
     }
 
-    if max_t - t != xx frame.payload_length then return .{}, true;
+    if frame.opcode == .Control_Frame_Ping && frame.payload_length > 125 then return .{}, .Error;
+
+    if max_t - t != xx frame.payload_length then return .{}, .Need_More_Data;
 
     // @Todo: I think we are leaking this.
     array_reserve(*frame.payload, xx frame.payload_length);
@@ -180,7 +188,7 @@ parse_web_socket_frame :: (client: *Http_Client) -> Web_Socket_Frame, error: boo
         }
     }
 
-    return frame, false;
+    return frame, .Success;
 }
 
 send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {

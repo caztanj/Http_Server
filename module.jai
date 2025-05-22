@@ -536,10 +536,13 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
     if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
             #if ENABLE_TLS {
-                frame, error := parse_web_socket_frame(client,, temp);
-                if error {
-                    // @Todo: .Need_More_Data?
-                    // close(server, client);
+                frame, status := parse_web_socket_frame(client,, temp);
+                if status == .Need_More_Data {
+                    return;
+                }
+
+                if status == .Error {
+                    close(server, client);
                     return;
                 }
 
