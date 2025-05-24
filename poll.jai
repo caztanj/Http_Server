@@ -224,6 +224,7 @@ process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {
 
     for server.clients {
         if it.timeout <= now {
+            // @Todo: If this is a web socket we want to send a close frame.
             close(server, it);
             continue;
         }
