@@ -232,7 +232,6 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
 }
 
 merge_continuation_frames :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Status, Web_Socket_Frame {
-    // TODO: Maybe do status, merged_frame = ...
     status, merged_frame := parse_web_socket_frame(client,, temp);
 
     done := false;
@@ -247,6 +246,8 @@ merge_continuation_frames :: (client: *Http_Client) -> Parse_Web_Socket_Frame_St
 
         if frame.fin then done = true;
     }
+
+    merged_frame.fin = true;
 
     return .Success, merged_frame;
 }

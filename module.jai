@@ -498,7 +498,7 @@ Http_Client :: struct {
 init :: (client: *Http_Client, socket: Socket.Socket) {
     client.request.id = socket;
 
-    // @Performance: Originally I had a fixed size array in the Http_Client instead of allocating it with NewArray. The compiler crashes with a stack overflow if we have too large MAX_REQUEST_SIZE so I switched to doing this. The performance dropped significantly so we need to revisit this in the future.
+    // @Speed: Originally I had a fixed size array in the Http_Client instead of allocating it with NewArray. The compiler crashes with a stack overflow if we have too large MAX_REQUEST_SIZE so I switched to doing this. The performance dropped significantly so we need to revisit this in the future.
     client.request.raw = NewArray(MAX_REQUEST_SIZE, u8);
 }
 
@@ -547,47 +547,64 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 t     := client.request.t;
                 max_t := client.request.max_t;
 
+                again := false;
+
                 status, frame := parse_web_socket_frame(client,, temp);
                 if status == .Need_More_Data {
                     client.request.t = t;
                     client.request.max_t = max_t;
-                    return false;
+                    return again;
                 }
 
                 if status == .Error {
                     close(server, client);
-                    return false;
+                    return again;
                 }
 
                 if !frame.fin {
                     if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
                         close(server, client);
-                        return false;
+                        return again;
                     }
 
                     client.request.waiting_for_fin_frame = true;
 
                     return true;
                 } else if client.request.waiting_for_fin_frame {
-                    client.request.t     = client.request.raw.data;
-                    client.request.max_t = client.request.raw.data + client.request.raw_count;
+                    if frame.opcode == .Continuation {
+                        client.request.t     = client.request.raw.data;
+                        client.request.max_t = client.request.raw.data + client.request.raw_count;
 
-                    status, frame = merge_continuation_frames(client,, temp);
-                    if status != .Success {
-                        close(server, client);
-                        return false;
+                        status, frame = merge_continuation_frames(client,, temp);
+                        if status != .Success {
+                            close(server, client);
+                            return again;
+                        }
+
+                        client.request.waiting_for_fin_frame = false;
+
+                        if client.request.t < client.request.max_t {
+                            count := client.request.max_t - client.request.t;
+                            // @Robustness: Clean up these memcpys.
+                            memcpy(client.request.raw.data, client.request.t, count);
+                            client.request.raw_count = count;
+                            again = true;
+                        } else {
+                            client.request.raw_count = 0;
+                            again = true;
+                        }
+                    } else {
+                        memcpy(t, client.request.t, client.request.max_t - client.request.t);
+                        client.request.raw_count -= client.request.t - t;
+                        client.request.t = t;
+                        again = true;
                     }
-
-                    client.request.waiting_for_fin_frame = false;
-
-                    if client.request.t < client.request.max_t {
-                        count := client.request.max_t - client.request.t;
-                        memcpy(client.request.raw.data, client.request.t, count);
-                        client.request.raw_count = count;
-
-                        return true;
-                    }
-
+                } else if client.request.t < client.request.max_t {
+                    count := client.request.max_t - client.request.t;
+                    memcpy(client.request.raw.data, client.request.t, count);
+                    client.request.raw_count = count;
+                    again = true;
+                } else {
                     client.request.raw_count = 0;
                 }
 
@@ -630,15 +647,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         event.web_socket_message.id = client.socket;
                 }
 
-                if client.request.t < client.request.max_t {
-                    count := client.request.max_t - client.request.t;
-                    memcpy(client.request.raw.data, client.request.t, count);
-                    client.request.raw_count = count;
-
-                    return true;
-                }
-
-                client.request.raw_count = 0;
+                return again;
             }
         } else {
             status := parse_request(client);
