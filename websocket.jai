@@ -49,6 +49,8 @@ send_web_socket_text :: (server: *Http_Server, id: Socket.Socket, text: string) 
     client := find_client(server, id);
     if client == null then return true;
 
+    if client.close_after_send then return true;
+
     frame := Web_Socket_Frame.{
         fin = true,
         opcode = .Data_Frame_Text,
@@ -67,6 +69,8 @@ send_web_socket_blob :: (server: *Http_Server, id: Socket.Socket, data: [] u8) -
     client := find_client(server, id);
     if client == null then return true;
 
+    if client.close_after_send then return true;
+
     frame := Web_Socket_Frame.{
         fin = true,
         opcode = .Data_Frame_Binary,
@@ -81,10 +85,42 @@ send_web_socket_blob :: (server: *Http_Server, id: Socket.Socket, data: [] u8) -
     return false;
 }
 
+send_web_socket_pong :: (server: *Http_Server, id: Socket.Socket, ping_frame: Web_Socket_Frame) -> error: bool {
+    client := find_client(server, id);
+    if client == null then return false;
+
+    if client.close_after_send then return true;
+
+    frame := Web_Socket_Frame.{
+        fin = true,
+        opcode = .Control_Frame_Pong,
+        payload_length = ping_frame.payload_length,
+        payload = ping_frame.payload,
+    };
+
+    send_web_socket_frame(server, client, frame);
+
+    return true;
+}
+
+fail_web_socket_connection :: (server: *Http_Server, id: Socket.Socket) -> error: bool {
+    client := find_client(server, id);
+    if client == null then return true;
+
+    if client.close_after_send then return true;
+
+    close(server, client, gracefully = true);
+
+    return false;
+}
+
 Web_Socket_Frame :: struct {
     // @Todo: Remove this
     id: Socket.Socket;
     fin: bool;
+    rsv1: bool;
+    rsv2: bool;
+    rsv3: bool;
     opcode: Web_Socket_Opcode;
     masked: bool;
     payload_length: u64;
@@ -93,6 +129,7 @@ Web_Socket_Frame :: struct {
 }
 
 Web_Socket_Message_Type :: enum {
+    Ping;
     Text;
     Binary;
 }
@@ -119,11 +156,9 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
 
     frame.fin = xx client.request.t.* & 0b10000000;
 
-    rsv1 := client.request.t.* & 0b01000000;
-    rsv2 := client.request.t.* & 0b00100000;
-    rsv3 := client.request.t.* & 0b00010000;
-
-    if rsv1 || rsv2 || rsv3 then return .Error, .{};
+    frame.rsv1 = xx client.request.t.* & 0b01000000;
+    frame.rsv2 = xx client.request.t.* & 0b00100000;
+    frame.rsv3 = xx client.request.t.* & 0b00010000;
 
     frame.opcode = xx client.request.t.* & 0b00001111;
 
@@ -207,17 +242,6 @@ send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {
     };
 
     client.close_after_send = true;
-
-    send_web_socket_frame(server, client, frame);
-}
-
-send_web_socket_pong :: (server: *Http_Server, client: *Http_Client, ping_frame: Web_Socket_Frame) {
-    frame := Web_Socket_Frame.{
-        fin = true,
-        opcode = .Control_Frame_Pong,
-        payload_length = ping_frame.payload_length,
-        payload = ping_frame.payload,
-    };
 
     send_web_socket_frame(server, client, frame);
 }

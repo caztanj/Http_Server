@@ -166,7 +166,12 @@ epoll_mod :: (epoll: s32, fd: s32, events: u32) -> error: bool {
     return result == -1;
 }
 
-close :: (server: *Http_Server, client: *Http_Client) {
+close :: (server: *Http_Server, client: *Http_Client, gracefully := false) {
+    if gracefully && client.chunks_to_send.count > 0 {
+        client.close_after_send = true;
+        return;
+    }
+
     #if ENABLE_TLS {
         if server.tls {
             LibreSSL.SSL_shutdown(client.ssl);

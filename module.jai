@@ -554,17 +554,16 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         // @Todo: Only send if we have not done so yet.
                         send_web_socket_close_frame(server, client);
 
-                    case .Control_Frame_Ping;
-                        send_web_socket_pong(server, client, frame);
-
-                    case .Control_Frame_Pong;
-
-                    case .Data_Frame_Text;  #through;
+                    case .Control_Frame_Ping;  #through;
+                    case .Data_Frame_Text;     #through;
                     case .Data_Frame_Binary;
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
 
                         if frame.opcode == {
+                            case. Control_Frame_Ping;
+                                event.web_socket_message.type = .Ping;
+
                             case .Data_Frame_Text;
                                 event.web_socket_message.type = .Text;
 

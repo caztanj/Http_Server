@@ -137,7 +137,12 @@ poll_mod :: (server: *Http_Server, fd: Socket.Socket, events: s16) {
     }
 }
 
-close :: (server: *Http_Server, client: *Http_Client) {
+close :: (server: *Http_Server, client: *Http_Client, gracefully := false) {
+    if gracefully && client.chunks_to_send.count > 0 {
+        client.close_after_send = true;
+        return;
+    }
+
     for server.events {
         if it.fd == client.socket {
             remove it;
