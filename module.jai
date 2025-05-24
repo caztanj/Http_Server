@@ -557,6 +557,10 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         send_web_socket_close_frame(server, client);
 
                     case .Control_Frame_Pong;
+                        if !frame.fin {
+                            close(server, client);
+                            return false;
+                        }
 
                     case .Control_Frame_Ping;
                         if !frame.fin {
