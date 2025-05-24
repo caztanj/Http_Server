@@ -583,6 +583,8 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                     return true;
                 }
+
+                client.request.raw_count = 0;
             }
         } else {
             status := parse_request(client);

@@ -198,12 +198,14 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
         client.request.body = "";
         array_reset(*client.request.headers);
 
-        if client.request.t < client.request.max_t {
-            count := client.request.max_t - client.request.t;
-            memcpy(client.request.raw.data, client.request.t, count);
-            client.request.raw_count = count;
-        } else {
-            client.request.raw_count = 0;
+        if client.phase != .Web_Socket {
+            if client.request.t < client.request.max_t {
+                count := client.request.max_t - client.request.t;
+                memcpy(client.request.raw.data, client.request.t, count);
+                client.request.raw_count = count;
+            } else {
+                client.request.raw_count = 0;
+            }
         }
 
         if client.phase == .Upgrading_To_Web_Socket {
