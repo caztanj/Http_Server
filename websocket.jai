@@ -132,6 +132,7 @@ Web_Socket_Message_Type :: enum {
     Ping;
     Text;
     Binary;
+    Error;
 }
 
 Web_Socket_Message :: struct {

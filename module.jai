@@ -546,13 +546,17 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     return false;
                 }
 
-                if frame.opcode == {
+                if #complete frame.opcode == {
+                    case .Continuation;
+
                     case .Control_Frame_Close;
                         event := array_add(events);
                         event.type = .Close;
 
                         // @Todo: Only send if we have not done so yet.
                         send_web_socket_close_frame(server, client);
+
+                    case .Control_Frame_Pong;
 
                     case .Control_Frame_Ping;  #through;
                     case .Data_Frame_Text;     #through;
@@ -573,6 +577,12 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                         event.web_socket_message.id = client.socket;
                         event.web_socket_message.frame = frame;
+
+                    case;
+                        event := array_add(events);
+                        event.type = .Web_Socket_Message;
+                        event.web_socket_message.type = .Error;
+                        event.web_socket_message.id = client.socket;
                 }
 
                 if client.request.t < client.request.max_t {
