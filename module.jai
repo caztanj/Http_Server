@@ -624,16 +624,24 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                     case .Control_Frame_Pong;
 
-                    case .Control_Frame_Ping;  #through;
-                    case .Data_Frame_Text;     #through;
+                    case .Control_Frame_Ping;
+                        event := array_add(events);
+                        event.type = .Web_Socket_Message;
+                        event.web_socket_message.type = .Ping;
+                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.frame = frame;
+
+                    case .Data_Frame_Text;  #through;
                     case .Data_Frame_Binary;
+                        if client.request.waiting_for_fin_frame {
+                            close(server, client);
+                            return false;
+                        }
+
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
 
                         if frame.opcode == {
-                            case. Control_Frame_Ping;
-                                event.web_socket_message.type = .Ping;
-
                             case .Data_Frame_Text;
                                 event.web_socket_message.type = .Text;
 
