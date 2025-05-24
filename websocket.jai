@@ -118,6 +118,13 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
     frame: Web_Socket_Frame;
 
     frame.fin = xx client.request.t.* & 0b10000000;
+
+    rsv1 := client.request.t.* & 0b01000000;
+    rsv2 := client.request.t.* & 0b00100000;
+    rsv3 := client.request.t.* & 0b00010000;
+
+    if rsv1 || rsv2 || rsv3 then return .Error, .{};
+
     frame.opcode = xx client.request.t.* & 0b00001111;
 
     client.request.t += 1;
