@@ -610,6 +610,10 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                 if #complete frame.opcode == {
                     case .Continuation;
+                        if !client.request.waiting_for_fin_frame {
+                            close(server, client);
+                            return false;
+                        }
 
                     case .Control_Frame_Close;
                         event := array_add(events);
