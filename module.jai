@@ -50,6 +50,8 @@ Http_Request :: struct {
 
     t:     *u8;
     max_t: *u8;
+
+    waiting_for_fin_frame: bool;
 }
 
 Http_Response :: struct {
@@ -536,6 +538,12 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
     if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
             #if ENABLE_TLS {
+                if !client.request.waiting_for_fin_frame {
+                    client.request.t = client.request.raw.data;
+                }
+
+                client.request.max_t = client.request.raw.data + client.request.raw_count;
+
                 status, frame := parse_web_socket_frame(client,, temp);
                 if status == .Need_More_Data {
                     return false;
@@ -544,6 +552,29 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 if status == .Error {
                     close(server, client);
                     return false;
+                }
+
+                if !frame.fin {
+                    if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
+                        close(server, client);
+                        return false;
+                    }
+
+                    client.request.waiting_for_fin_frame = true;
+
+                    return true;
+                } else if client.request.waiting_for_fin_frame {
+                    client.request.t     = client.request.raw.data;
+                    client.request.max_t = client.request.raw.data + client.request.raw_count;
+
+                    status, frame = merge_continuation_frames(client,, temp);
+                    if status != .Success {
+                        close(server, client);
+                        return false;
+                    }
+
+                    client.request.waiting_for_fin_frame = false;
+                    client.request.raw_count = 0;
                 }
 
                 if #complete frame.opcode == {
@@ -557,20 +588,9 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         send_web_socket_close_frame(server, client);
 
                     case .Control_Frame_Pong;
-                        if !frame.fin {
-                            close(server, client);
-                            return false;
-                        }
 
-                    case .Control_Frame_Ping;
-                        if !frame.fin {
-                            close(server, client);
-                            return false;
-                        }
-
-                        #through;
-
-                    case .Data_Frame_Text;  #through;
+                    case .Control_Frame_Ping;  #through;
+                    case .Data_Frame_Text;     #through;
                     case .Data_Frame_Binary;
                         event := array_add(events);
                         event.type = .Web_Socket_Message;

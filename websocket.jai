@@ -150,9 +150,6 @@ Parse_Web_Socket_Frame_Status :: enum {
 }
 
 parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Status, Web_Socket_Frame {
-    client.request.t     = client.request.raw.data;
-    client.request.max_t = client.request.t + client.request.raw_count;
-
     frame: Web_Socket_Frame;
 
     frame.fin = xx client.request.t.* & 0b10000000;
@@ -220,10 +217,8 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
 
     if xx (client.request.max_t - client.request.t) < frame.payload_length then return .Need_More_Data, .{};
 
-    // @Todo: I think we are leaking this.
-    array_reserve(*frame.payload, xx frame.payload_length);
+    array_resize(*frame.payload, xx frame.payload_length);
     memcpy(frame.payload.data, client.request.t, xx frame.payload_length);
-    frame.payload.count = xx frame.payload_length;
 
     if frame.masked && frame.payload_length > 0 {
         for i: 0..frame.payload_length - 1 {
@@ -234,6 +229,26 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
     client.request.t += frame.payload.count;
 
     return .Success, frame;
+}
+
+merge_continuation_frames :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Status, Web_Socket_Frame {
+    // TODO: Maybe do status, merged_frame = ...
+    status, merged_frame := parse_web_socket_frame(client,, temp);
+
+    done := false;
+    while !done {
+        status, frame := parse_web_socket_frame(client,, temp);
+        if status != .Success then return status, .{};
+
+        count := frame.payload.count;
+        array_add(*merged_frame.payload, ..frame.payload);
+
+        merged_frame.payload_length += frame.payload_length;
+
+        if frame.fin then done = true;
+    }
+
+    return .Success, merged_frame;
 }
 
 send_web_socket_close_frame :: (server: *Http_Server, client: *Http_Client) {
