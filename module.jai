@@ -553,18 +553,27 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 if status == .Need_More_Data {
                     client.request.t = t;
                     client.request.max_t = max_t;
-                    return again;
+                    return false;
                 }
 
                 if status == .Error {
                     close(server, client);
-                    return again;
+                    return false;
                 }
 
                 if !frame.fin {
                     if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
                         close(server, client);
-                        return again;
+                        return false;
+                    }
+
+                    if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
+                        event := array_add(events);
+                        event.type = .Web_Socket_Message;
+                        event.web_socket_message.type = .Error;
+                        event.web_socket_message.id = client.socket;
+
+                        return false;
                     }
 
                     client.request.waiting_for_fin_frame = true;
@@ -578,7 +587,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         status, frame = merge_continuation_frames(client,, temp);
                         if status != .Success {
                             close(server, client);
-                            return again;
+                            return false;
                         }
 
                         client.request.waiting_for_fin_frame = false;
