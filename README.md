@@ -5,6 +5,7 @@ This is an HTTP server written in Jai for Jai. It is not complete and there are 
 ## Features
 
 - HTTP/1.1
+- Web Sockets
 - Linux (epoll)
 - Windows (Winsock2)
 - macOS (kqueue)
@@ -41,7 +42,6 @@ The macOS backend uses kqueue and LibreSSL.
   - Parameters
 - HTTP/2
 - HTTP/3
-- Web Sockets
 
 ## Contributions
 
