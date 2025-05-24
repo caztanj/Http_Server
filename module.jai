@@ -544,8 +544,13 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                 client.request.max_t = client.request.raw.data + client.request.raw_count;
 
+                t     := client.request.t;
+                max_t := client.request.max_t;
+
                 status, frame := parse_web_socket_frame(client,, temp);
                 if status == .Need_More_Data {
+                    client.request.t = t;
+                    client.request.max_t = max_t;
                     return false;
                 }
 
@@ -574,6 +579,15 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     }
 
                     client.request.waiting_for_fin_frame = false;
+
+                    if client.request.t < client.request.max_t {
+                        count := client.request.max_t - client.request.t;
+                        memcpy(client.request.raw.data, client.request.t, count);
+                        client.request.raw_count = count;
+
+                        return true;
+                    }
+
                     client.request.raw_count = 0;
                 }
 
