@@ -96,8 +96,18 @@ recv :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
 
 read_from_client :: (server: *Http_Server, client: *Http_Client) {
     while true {
-        offset := client.request.raw.data + client.request.raw_count;
-        max    := client.request.raw.count - client.request.raw_count;
+        offset := client.request.buffer.data + client.request.buffer_count;
+        max    := client.request.buffer.count - client.request.buffer_count;
+
+        if max == 0 {
+            Basic :: #import "Basic";
+
+            count := Basic.max(MIN_BUFFER_SIZE, client.request.buffer.count * 2);
+            array_resize(*client.request.buffer, count);
+
+            offset = client.request.buffer.data + client.request.buffer_count;
+            max    = client.request.buffer.count - client.request.buffer_count;
+        }
 
         bytes_read := recv(server, client, offset, max);
         if bytes_read == -1 {
@@ -126,9 +136,9 @@ read_from_client :: (server: *Http_Server, client: *Http_Client) {
             return;
         }
 
-        client.request.raw_count += bytes_read;
+        client.request.buffer_count += bytes_read;
 
-        if client.request.raw_count == MAX_REQUEST_SIZE {
+        if client.request.buffer_count == MAX_REQUEST_SIZE {
             close(server, client);
             return;
         }
@@ -160,9 +170,11 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
             error := Socket.get_last_socket_error();
 
             #if ENABLE_TLS {
-                if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
-                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
-                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                if server.tls {
+                    if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
+                        case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                        case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                    }
                 }
             }
 
@@ -195,16 +207,19 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
 
         client.request.uri = "";
         client.request.method = .GET;
-        client.request.body = "";
+
+        free(client.request.body.data);
+        client.request.body.count = 0;
+
         array_reset(*client.request.headers);
 
         if client.phase != .Web_Socket {
             if client.request.t < client.request.max_t {
                 count := client.request.max_t - client.request.t;
-                memcpy(client.request.raw.data, client.request.t, count);
-                client.request.raw_count = count;
+                memcpy(client.request.buffer.data, client.request.t, count);
+                client.request.buffer_count = count;
             } else {
-                client.request.raw_count = 0;
+                client.request.buffer_count = 0;
             }
         }
 

@@ -1,4 +1,4 @@
-#module_parameters () (ENABLE_TLS := false);
+#module_parameters () (ENABLE_TLS := false, MAX_REQUEST_SIZE := 65536);
 
 make_response :: (request: *Http_Request) -> *Http_Response {
     response := New(Http_Response);
@@ -43,15 +43,17 @@ Http_Request :: struct {
 
     headers: [..] Http_Header;
 
-    body: string; // View into raw
+    body: string;
 
-    raw:       [] u8;
-    raw_count: int;
+    buffer:       [..] u8;
+    buffer_count: int;
 
     t:     *u8;
     max_t: *u8;
 
+    // These are only used by web sockets.
     waiting_for_fin_frame: bool;
+    buffer_offset:         int;
 }
 
 Http_Response :: struct {
@@ -316,8 +318,8 @@ Parse_Request_Status :: enum {
 }
 
 parse_request :: (client: *Http_Client) -> Parse_Request_Status {
-    client.request.t     = client.request.raw.data;
-    client.request.max_t = client.request.t + client.request.raw_count;
+    client.request.t     = client.request.buffer.data;
+    client.request.max_t = client.request.t + client.request.buffer_count;
 
     status := parse_request_line(*client.request);
     if status != .Success then return status;
@@ -348,8 +350,7 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     if content_length {
         if client.request.t + content_length > client.request.max_t then return .Need_More_Data;
 
-        client.request.body.data = client.request.t;
-        client.request.body.count = content_length;
+        client.request.body = copy_string(string.{ data = client.request.t, count = content_length });
 
         client.request.t += content_length + 1;
     }
@@ -486,20 +487,17 @@ Http_Client :: struct {
         ssl: *LibreSSL.SSL;
     }
 
-    request: Http_Request;
-
     chunks_to_send: [..] Chunk;
 
     timeout: Apollo_Time;
 
     close_after_send: bool;
+
+    request: Http_Request;
 }
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
     client.request.id = socket;
-
-    // @Speed: Originally I had a fixed size array in the Http_Client instead of allocating it with NewArray. The compiler crashes with a stack overflow if we have too large MAX_REQUEST_SIZE so I switched to doing this. The performance dropped significantly so we need to revisit this in the future.
-    client.request.raw = NewArray(MAX_REQUEST_SIZE, u8);
 }
 
 add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
@@ -524,8 +522,11 @@ find_client :: (server: *Http_Server, id: Socket.Socket) -> *Http_Client {
 
 remove_client :: (server: *Http_Server, client: *Http_Client) {
     table_remove(*server.clients, client.socket);
+
     array_reset(*client.request.headers);
+    array_reset(*client.request.buffer);
     array_reset(*client.chunks_to_send);
+
     free(client);
 }
 
@@ -539,10 +540,12 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
         if client.phase == .Web_Socket {
             #if ENABLE_TLS {
                 if !client.request.waiting_for_fin_frame {
-                    client.request.t = client.request.raw.data;
+                    client.request.t = client.request.buffer.data;
+                } else {
+                    client.request.t = client.request.buffer.data + client.request.buffer_offset;
                 }
 
-                client.request.max_t = client.request.raw.data + client.request.raw_count;
+                client.request.max_t = client.request.buffer.data + client.request.buffer_count;
 
                 t     := client.request.t;
                 max_t := client.request.max_t;
@@ -577,12 +580,13 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     }
 
                     client.request.waiting_for_fin_frame = true;
+                    client.request.buffer_offset = client.request.t - client.request.buffer.data;
 
                     return true;
                 } else if client.request.waiting_for_fin_frame {
                     if frame.opcode == .Continuation {
-                        client.request.t     = client.request.raw.data;
-                        client.request.max_t = client.request.raw.data + client.request.raw_count;
+                        client.request.t     = client.request.buffer.data;
+                        client.request.max_t = client.request.buffer.data + client.request.buffer_count;
 
                         status, frame = merge_continuation_frames(client,, temp);
                         if status != .Success {
@@ -595,26 +599,26 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         if client.request.t < client.request.max_t {
                             count := client.request.max_t - client.request.t;
                             // @Robustness: Clean up these memcpys.
-                            memcpy(client.request.raw.data, client.request.t, count);
-                            client.request.raw_count = count;
+                            memcpy(client.request.buffer.data, client.request.t, count);
+                            client.request.buffer_count = count;
                             again = true;
                         } else {
-                            client.request.raw_count = 0;
+                            client.request.buffer_count = 0;
                             again = true;
                         }
                     } else {
                         memcpy(t, client.request.t, client.request.max_t - client.request.t);
-                        client.request.raw_count -= client.request.t - t;
+                        client.request.buffer_count -= client.request.t - t;
                         client.request.t = t;
                         again = true;
                     }
                 } else if client.request.t < client.request.max_t {
                     count := client.request.max_t - client.request.t;
-                    memcpy(client.request.raw.data, client.request.t, count);
-                    client.request.raw_count = count;
+                    memcpy(client.request.buffer.data, client.request.t, count);
+                    client.request.buffer_count = count;
                     again = true;
                 } else {
-                    client.request.raw_count = 0;
+                    client.request.buffer_count = 0;
                 }
 
                 if #complete frame.opcode == {
@@ -742,7 +746,7 @@ is_valid_utf8 :: (bytes: [] u8) -> bool {
     return true;
 }
 
-MAX_REQUEST_SIZE :: 65536 * 2;
+MIN_BUFFER_SIZE :: 65536;
 
 #import "Base64";
 #import "Basic";

@@ -1,9 +1,9 @@
 #run {
     prepare_client :: (request: string) -> Http_Client {
         client: Http_Client;
-        client.request.raw = NewArray(65535, u8);
-        memcpy(client.request.raw.data, request.data, request.count);
-        client.request.raw_count = request.count;
+        array_resize(*client.request.buffer, 65535);
+        memcpy(client.request.buffer.data, request.data, request.count);
+        client.request.buffer_count = request.count;
         return client;
     }
 
