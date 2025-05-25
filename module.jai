@@ -297,6 +297,45 @@ decode_uri :: (uri: string) -> error: bool, string {
     return false, builder_to_string(*b);
 }
 
+print_http_request :: (request: *Http_Request) {
+    b: String_Builder;
+    b.allocator = temp;
+
+    if #complete request.method == {
+        case .GET;      append(*b, "GET");
+        case .HEAD;     append(*b, "HEAD");
+        case .POST;     append(*b, "POST");
+        case .PUT;      append(*b, "PUT");
+        case .DELETE;   append(*b, "DELETE");
+        case .CONNECT;  append(*b, "CONNECT");
+        case .OPTIONS;  append(*b, "OPTIONS");
+        case .TRACE;    append(*b, "TRACE");
+        case .PATCH;    append(*b, "PATCH");
+    }
+
+    append(*b, " ");
+    append(*b, request.uri);
+    append(*b, " ");
+    append(*b, "HTTP/1.1");
+    append(*b, "\n");
+
+    for request.headers {
+        append(*b, it.key);
+        append(*b, ": ");
+        append(*b, it.value);
+        append(*b, "\n");
+    }
+
+    if request.body.count > 0 {
+        append(*b, "\n");
+        append(*b, request.body);
+    }
+
+    s := builder_to_string(*b,, temp);
+
+    print("%", s);
+}
+
 #scope_module
 
 is_digits :: (s: string) -> bool {
