@@ -115,8 +115,6 @@ fail_web_socket_connection :: (server: *Http_Server, id: Socket.Socket) -> error
 }
 
 Web_Socket_Frame :: struct {
-    // @Todo: Remove this
-    id: Socket.Socket;
     fin: bool;
     rsv1: bool;
     rsv2: bool;
