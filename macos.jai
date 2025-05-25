@@ -89,14 +89,11 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         if ev.filter == .READ {
             read_from_client(server, client);
 
-            again := true;
-            while again {
-                again = maybe_parse_request_or_web_socket_message(server, xx ev.ident, *events);
-            }
+            while maybe_parse_request_or_web_socket_message(server, xx ev.ident, *events) {}
         }
 
         if ev.filter == .WRITE {
-            send_to_client(server, client);
+            while send_to_client(server, client) {}
         }
     }
 

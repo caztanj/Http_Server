@@ -157,7 +157,7 @@ send :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
     return Socket.send(client.socket, buffer, xx size, 0);
 }
 
-send_to_client :: (server: *Http_Server, client: *Http_Client) {
+send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
     assert(client.chunks_to_send.count > 0);
     chunk := *client.chunks_to_send[0];
 
@@ -180,11 +180,11 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
 
             if error != Socket.SOCKET_WOULDBLOCK {
                 close(server, client);
-                return;
+                return false;
             }
 
             set_timeout(client, 30);
-            return;
+            return false;
         }
 
         chunk.bytes_sent += bytes_sent;
@@ -196,13 +196,12 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
         array_ordered_remove_by_index(*client.chunks_to_send, 0);
 
         if client.chunks_to_send.count > 0 {
-            send_to_client(server, client);
-            return;
+            return true;
         }
 
         if client.close_after_send {
             close(server, client);
-            return;
+            return false;
         }
 
         client.request.uri = "";
@@ -229,6 +228,8 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) {
 
         read_data_from_client(server, client);
     }
+
+    return false;
 }
 
 process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {

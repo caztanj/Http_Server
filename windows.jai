@@ -71,14 +71,11 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         if it.revents & Socket.POLLIN {
             read_from_client(server, client);
 
-            again := true;
-            while again {
-                again = maybe_parse_request_or_web_socket_message(server, it.fd, *events);
-            }
+            while maybe_parse_request_or_web_socket_message(server, it.fd, *events) {}
         }
 
         if it.revents & Socket.POLLOUT {
-            send_to_client(server, client);
+            while send_to_client(server, client) {}
         }
     }
 
