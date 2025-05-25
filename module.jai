@@ -646,6 +646,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                             return false;
                         }
 
+                        // @Todo: Autobahn 6.4.* are Non-Strict
                         if !is_valid_utf8(frame.payload) {
                             close(server, client);
                             return false;
