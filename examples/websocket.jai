@@ -10,26 +10,38 @@ main :: () {
         if error then quit = true;
 
         for events {
-            if it.type == .Http_Request {
-                if is_web_socket_upgrade(it.http_request) {
-                    error := perform_web_socket_upgrade(*server, it.http_request);
-                    if error {
-                        response := make_response(it.http_request,, temp);
+            if it.type == {
+                case .Http_Request;
+                    if is_web_socket_upgrade(it) {
+                        error := perform_web_socket_upgrade(*server, it);
+                        if error {
+                            response := make_response(it,, temp);
 
-                        not_found(*server, response);
+                            not_found(*server, response);
+                            send_response(*server, response);
+                        }
+                    } else {
+                        response := make_response(it,, temp);
+
+                        html(*server, response, "<html>Web Socket</html>");
                         send_response(*server, response);
                     }
-                } else {
-                    response := make_response(it.http_request,, temp);
 
-                    html(*server, response, "<html>Web Socket</html>");
-                    send_response(*server, response);
-                }
-            }
+                case .Web_Socket_Message;
+                    if #complete it.web_socket_message.type == {
+                        case .Ping;
+                            send_web_socket_pong(*server, it);
 
-            if it.type == .Web_Socket_Message {
-                print("%\n", cast(string) it.web_socket_message.frame.payload);
-                send_web_socket_text(*server, it.web_socket_message.id, "Hello from Jai!");
+                        case .Text;
+                            print("%\n", cast(string) it.web_socket_message.frame.payload);
+                            send_web_socket_text(*server, it, "Hello from Jai!");
+
+                        case .Binary;
+                            send_web_socket_blob(*server, it, cast([] u8) "Hello from Jai");
+
+                        case .Error;
+                            fail_web_socket_connection(*server, it);
+                    }
             }
         }
 

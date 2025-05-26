@@ -39,9 +39,9 @@ main :: () {
         for events {
             if it.type != .Http_Request then continue;
 
-            handled := http_router_handle_request(*server, *router, it.http_request);
+            handled := http_router_handle_request(*server, *router, it);
             if !handled {
-                response := make_response(it.http_request,, temp);
+                response := make_response(it,, temp);
                 not_found(*server, response);
                 send_response(*server, response);
             }

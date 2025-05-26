@@ -12,13 +12,13 @@ main :: () {
         for events {
             if #complete it.type == {
                 case .Http_Request;
-                    handle_request(*server, it.http_request);
+                    handle_request(*server, it);
 
                 case .Web_Socket_Message;
-                    handle_web_socket_message(it.web_socket_message);
+                    handle_web_socket_message(it);
 
                 case .Close;
-                    handle_close(it.close_event);
+                    handle_close(it);
             }
         }
 
@@ -30,29 +30,29 @@ main :: () {
     report_memory_leaks();
 }
 
-handle_request :: (server: *Http_Server, request: *Http_Request) {
-    if is_web_socket_upgrade(request) {
-        error := perform_web_socket_upgrade(server, request);
+handle_request :: (server: *Http_Server, event: Http_Event) {
+    if is_web_socket_upgrade(event) {
+        error := perform_web_socket_upgrade(server, event);
         if error {
-            response := make_response(request,, temp);
+            response := make_response(event,, temp);
 
             not_found(server, response);
             send_response(server, response);
         }
     } else {
-        response := make_response(request,, temp);
+        response := make_response(event,, temp);
 
         html(server, response, "<html>Hello</html>");
         send_response(server, response);
     }
 }
 
-handle_web_socket_message :: (message: Web_Socket_Message) {
-    print("%\n", message.frame.payload.(string));
+handle_web_socket_message :: (event: Http_Event) {
+    print("%\n", event.web_socket_message.frame.payload.(string));
 }
 
-handle_close :: (close_event: Http_Close_Event) {
-    print("% closed\n", close_event.id);
+handle_close :: (event: Http_Event) {
+    print("% closed\n", event.client_socket);
 }
 
 #import "Basic" () (MEMORY_DEBUGGER = true, TEMP_ALLOCATOR_POISON_FREED_MEMORY = true);

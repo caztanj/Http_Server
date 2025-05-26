@@ -82,7 +82,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
     for server.closed_sockets {
         event := array_add(*events);
         event.type = .Close;
-        event.close_event.id = it;
+        event.client_socket = it;
     }
 
     array_reset_keeping_memory(*server.closed_sockets);

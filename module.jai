@@ -1,8 +1,12 @@
 #module_parameters () (ENABLE_TLS := false, MAX_REQUEST_SIZE := 65536);
 
+make_response :: (event: Http_Event) -> *Http_Response {
+    return make_response(event.http_request);
+}
+
 make_response :: (request: *Http_Request) -> *Http_Response {
     response := New(Http_Response);
-    response.id = request.id;
+    response.client_socket = request.client_socket;
     return response;
 }
 
@@ -19,24 +23,20 @@ Http_Event_Type :: enum {
 Http_Event :: struct {
     type: Http_Event_Type;
 
+    client_socket: Socket.Socket;
+
     union {
         http_request: *Http_Request;
 
         #if ENABLE_TLS {
             web_socket_message: Web_Socket_Message;
         }
-
-        close_event: Http_Close_Event; // Can be both Http and web socket
     }
-}
-
-Http_Close_Event :: struct {
-    id: Socket.Socket;
 }
 
 // @Todo: Allocate dynamic memory in a pool.
 Http_Request :: struct {
-    id: Socket.Socket;
+    client_socket: Socket.Socket;
 
     uri:    string;
     method: Http_Method;
@@ -57,7 +57,7 @@ Http_Request :: struct {
 }
 
 Http_Response :: struct {
-    id: Socket.Socket;
+    client_socket: Socket.Socket;
 
     status: Http_Response_Status;
 
@@ -197,7 +197,7 @@ get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
 }
 
 html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
-    client := find_client(server, response.id);
+    client := find_client(server, response.client_socket);
     if client == null then return true;
 
     response.status = .Ok;
@@ -217,7 +217,7 @@ html :: (server: *Http_Server, response: *Http_Response, html: string) -> error:
 }
 
 not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.id);
+    client := find_client(server, response.client_socket);
     if client == null then return true;
 
     response.status = .Not_Found;
@@ -235,7 +235,7 @@ not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 }
 
 bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.id);
+    client := find_client(server, response.client_socket);
     if client == null then return true;
 
     response.status = .Bad_Request;
@@ -251,7 +251,7 @@ bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 }
 
 internal_server_error :: (server: *Http_Server, response: *Http_Response) -> error: bool {
-    client := find_client(server, response.id);
+    client := find_client(server, response.client_socket);
     if client == null then return true;
 
     response.status = .Internal_Server_Error;
@@ -536,7 +536,7 @@ Http_Client :: struct {
 }
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
-    client.request.id = socket;
+    client.request.client_socket = socket;
 }
 
 add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
@@ -553,8 +553,8 @@ add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
     return client;
 }
 
-find_client :: (server: *Http_Server, id: Socket.Socket) -> *Http_Client {
-    success, client := table_find_new(*server.clients, id);
+find_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
+    success, client := table_find_new(*server.clients, socket);
     if !success then return null;
     return client;
 }
@@ -613,7 +613,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
                         event.web_socket_message.type = .Error;
-                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.client_socket = client.socket;
 
                         return false;
                     }
@@ -670,6 +670,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     case .Control_Frame_Close;
                         event := array_add(events);
                         event.type = .Close;
+                        event.client_socket = socket;
 
                         // @Todo: Only send if we have not done so yet.
                         send_web_socket_close_frame(server, client);
@@ -679,8 +680,9 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     case .Control_Frame_Ping;
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
+                        event.client_socket = socket;
                         event.web_socket_message.type = .Ping;
-                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.client_socket = client.socket;
                         event.web_socket_message.frame = frame;
 
                     case .Data_Frame_Text;
@@ -697,8 +699,9 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
+                        event.client_socket = socket;
                         event.web_socket_message.type = .Text;
-                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.client_socket = client.socket;
                         event.web_socket_message.frame = frame;
 
                     case .Data_Frame_Binary;
@@ -709,15 +712,17 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
+                        event.client_socket = socket;
                         event.web_socket_message.type = .Binary;
-                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.client_socket = client.socket;
                         event.web_socket_message.frame = frame;
 
                     case;
                         event := array_add(events);
                         event.type = .Web_Socket_Message;
+                        event.client_socket = socket;
                         event.web_socket_message.type = .Error;
-                        event.web_socket_message.id = client.socket;
+                        event.web_socket_message.client_socket = client.socket;
                 }
 
                 return again;
@@ -735,6 +740,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 case .Success;
                     event := array_add(events);
                     event.type = .Http_Request;
+                    event.client_socket = socket;
                     event.http_request = *client.request;
             }
         }

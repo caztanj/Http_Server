@@ -16,10 +16,10 @@ main :: () {
 
         for events {
             if it.type == .Http_Request {
-                if is_web_socket_upgrade(it.http_request) {
-                    error := perform_web_socket_upgrade(*server, it.http_request);
+                if is_web_socket_upgrade(it) {
+                    error := perform_web_socket_upgrade(*server, it);
                     if error {
-                        response := make_response(it.http_request,, temp);
+                        response := make_response(it,, temp);
 
                         internal_server_error(*server, response);
                         send_response(*server, response);
@@ -33,22 +33,22 @@ main :: () {
             if it.type == .Web_Socket_Message {
                 // @Todo: Should we turn this into a procedure? Maybe the user is using an extension that uses these so we cannot just always fail. Or maybe we want to use the .Error Web_Socket_Message_Type?
                 if it.web_socket_message.frame.rsv1 || it.web_socket_message.frame.rsv2 || it.web_socket_message.frame.rsv3 {
-                    fail_web_socket_connection(*server, it.web_socket_message.id);
+                    fail_web_socket_connection(*server, it);
                     continue;
                 }
 
                 if #complete it.web_socket_message.type == {
                     case .Ping;
-                        send_web_socket_pong(*server, it.web_socket_message.id, it.web_socket_message.frame);
+                        send_web_socket_pong(*server, it);
 
                     case .Text;
-                        send_web_socket_text(*server, it.web_socket_message.id, cast(string) it.web_socket_message.frame.payload);
+                        send_web_socket_text(*server, it, cast(string) it.web_socket_message.frame.payload);
 
                     case .Binary;
-                        send_web_socket_blob(*server, it.web_socket_message.id, xx cast(string) it.web_socket_message.frame.payload);
+                        send_web_socket_blob(*server, it, xx cast(string) it.web_socket_message.frame.payload);
 
                     case .Error;
-                        fail_web_socket_connection(*server, it.web_socket_message.id);
+                        fail_web_socket_connection(*server, it);
                 }
             }
         }

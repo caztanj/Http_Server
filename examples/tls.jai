@@ -12,7 +12,7 @@ main :: () {
         for events {
             if it.type != .Http_Request then continue;
 
-            response := make_response(it.http_request,, temp);
+            response := make_response(it,, temp);
             html(*server, response, "<html>TLS!</html>");
             send_response(*server, response);
         }

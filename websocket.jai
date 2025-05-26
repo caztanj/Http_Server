@@ -1,3 +1,7 @@
+is_web_socket_upgrade :: (event: Http_Event) -> bool {
+    return is_web_socket_upgrade(event.http_request);
+}
+
 is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     error, upgrade := get_header(request.headers, "Upgrade");
     if error then return false;
@@ -13,6 +17,10 @@ is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     if error then return false;
 
     return true;
+}
+
+perform_web_socket_upgrade :: (server: *Http_Server, event: Http_Event) -> error: bool {
+    return perform_web_socket_upgrade(server, event.http_request);
 }
 
 perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> error: bool {
@@ -35,7 +43,7 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     set_header(*response.headers, "Connection", "Upgrade");
     set_header(*response.headers, "Sec-WebSocket-Accept", accept);
 
-    client := find_client(server, request.id);
+    client := find_client(server, request.client_socket);
     if client == null then return true;
 
     client.phase = .Upgrading_To_Web_Socket;
@@ -45,8 +53,12 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     return false;
 }
 
-send_web_socket_text :: (server: *Http_Server, id: Socket.Socket, text: string) -> error: bool {
-    client := find_client(server, id);
+send_web_socket_text :: (server: *Http_Server, event: Http_Event, text: string) -> error: bool {
+    return send_web_socket_text(server, event.client_socket, text);
+}
+
+send_web_socket_text :: (server: *Http_Server, client_socket: Socket.Socket, text: string) -> error: bool {
+    client := find_client(server, client_socket);
     if client == null then return true;
 
     if client.close_after_send then return true;
@@ -65,8 +77,12 @@ send_web_socket_text :: (server: *Http_Server, id: Socket.Socket, text: string) 
     return false;
 }
 
-send_web_socket_blob :: (server: *Http_Server, id: Socket.Socket, data: [] u8) -> error: bool {
-    client := find_client(server, id);
+send_web_socket_blob :: (server: *Http_Server, event: Http_Event, data: [] u8) -> error: bool {
+    return send_web_socket_blob(server, event.client_socket, data);
+}
+
+send_web_socket_blob :: (server: *Http_Server, client_socket: Socket.Socket, data: [] u8) -> error: bool {
+    client := find_client(server, client_socket);
     if client == null then return true;
 
     if client.close_after_send then return true;
@@ -85,8 +101,12 @@ send_web_socket_blob :: (server: *Http_Server, id: Socket.Socket, data: [] u8) -
     return false;
 }
 
-send_web_socket_pong :: (server: *Http_Server, id: Socket.Socket, ping_frame: Web_Socket_Frame) -> error: bool {
-    client := find_client(server, id);
+send_web_socket_pong :: (server: *Http_Server, event: Http_Event) -> error: bool {
+    return send_web_socket_pong(server, event.client_socket, event.web_socket_message.frame);
+}
+
+send_web_socket_pong :: (server: *Http_Server, client_socket: Socket.Socket, ping_frame: Web_Socket_Frame) -> error: bool {
+    client := find_client(server, client_socket);
     if client == null then return false;
 
     if client.close_after_send then return true;
@@ -103,8 +123,12 @@ send_web_socket_pong :: (server: *Http_Server, id: Socket.Socket, ping_frame: We
     return true;
 }
 
-fail_web_socket_connection :: (server: *Http_Server, id: Socket.Socket) -> error: bool {
-    client := find_client(server, id);
+fail_web_socket_connection :: (server: *Http_Server, event: Http_Event) -> error: bool {
+    return fail_web_socket_connection(server, event.client_socket);
+}
+
+fail_web_socket_connection :: (server: *Http_Server, client_socket: Socket.Socket) -> error: bool {
+    client := find_client(server, client_socket);
     if client == null then return true;
 
     if client.close_after_send then return true;
@@ -134,7 +158,7 @@ Web_Socket_Message_Type :: enum {
 }
 
 Web_Socket_Message :: struct {
-    id: Socket.Socket;
+    client_socket: Socket.Socket;
     type: Web_Socket_Message_Type;
     frame: Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
 }

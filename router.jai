@@ -105,6 +105,10 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
     }
 }
 
+http_router_handle_request :: (server: *Http_Server, router: *Http_Router, event: Http_Event) -> handled: bool {
+    return http_router_handle_request(server, router, event.http_request);
+}
+
 http_router_handle_request :: (server: *Http_Server, router: *Http_Router, request: *Http_Request) -> handled: bool {
     response := make_response(request,, temp);
 
