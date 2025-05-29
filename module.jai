@@ -196,7 +196,7 @@ get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
     return true, "";
 }
 
-static_file_sync :: (server: *Http_Server, response: *Http_Response, file: string, directory: string) -> error: bool {
+static_file :: (server: *Http_Server, response: *Http_Response, file: string, directory: string) -> error: bool {
     // @Todo: Make an async version using File_Async.
 
     path := join(directory, "/", file,, temp);

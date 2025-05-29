@@ -43,7 +43,7 @@ handle_request :: (server: *Http_Server, event: Http_Event) {
 
         if starts_with(request.uri, "/api") {
             file := string.{ data = request.uri.data + 4, count = request.uri.count - 4 };
-            error := static_file_sync(server, response, file, join(path_strip_filename(get_path_of_running_executable()), "public",, temp));
+            error := static_file(server, response, file, join(path_strip_filename(get_path_of_running_executable()), "public",, temp));
             if error then not_found(server, response);
         } else {
             html(server, response, "<html>Hello</html>");
