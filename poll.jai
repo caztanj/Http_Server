@@ -33,6 +33,12 @@ send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool
         done = serialized.count == 0;
     }
 
+    #if OS == .LINUX {
+        if response.sendfile_fd != -1 {
+            client.sendfile_fd = response.sendfile_fd;
+        }
+    }
+
     send_data_to_client(server, client);
 
     return false;
@@ -197,6 +203,14 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
 
         if client.chunks_to_send.count > 0 {
             return true;
+        }
+
+        #if OS == .LINUX {
+            if client.sendfile_fd != -1 {
+                // @Todo: If we don't send the entire file we need to try again.
+                sendfile(client.socket, client.sendfile_fd, null, client.sendfile_count);
+                client.sendfile_fd = -1;
+            }
         }
 
         if client.close_after_send {
