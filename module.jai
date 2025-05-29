@@ -196,6 +196,50 @@ get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
     return true, "";
 }
 
+static_file_sync :: (server: *Http_Server, response: *Http_Response, file: string, directory: string) -> error: bool {
+    // @Todo: Make an async version using File_Async.
+
+    path := join(directory, "/", file,, temp);
+
+    // @Todo: Make a function that checks if the resolved path is in the directory.
+    if contains(path, "..") then return true;
+
+    content, success := read_entire_file(path,, temp);
+    if !success {
+        path = join(path, "/index.html",, temp);
+        content, success = read_entire_file(path,, temp);
+        if !success then return true;
+    }
+
+    if ends_with(path, ".html") {
+        return html(server, response, content);
+    } else {
+        return text(server, response, content);
+    }
+
+    return false;
+}
+
+text :: (server: *Http_Server, response: *Http_Response, text: string) -> error: bool {
+    client := find_client(server, response.client_socket);
+    if client == null then return true;
+
+    response.status = .Ok;
+    response.body   = text;
+
+    set_header(*response.headers, "Content-Type", "text/plain");
+    set_header(*response.headers, "Content-Length", tprint("%", text.count));
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
+}
+
 html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
     client := find_client(server, response.client_socket);
     if client == null then return true;
@@ -795,6 +839,7 @@ MIN_BUFFER_SIZE :: 65536;
 
 #import "Base64";
 #import "Basic";
+#import "File";
 #import "File_Utilities";
 #import "Flat_Pool";
 #import "Hash_Table";

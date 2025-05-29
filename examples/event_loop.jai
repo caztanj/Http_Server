@@ -35,14 +35,20 @@ handle_request :: (server: *Http_Server, event: Http_Event) {
         error := perform_web_socket_upgrade(server, event);
         if error {
             response := make_response(event,, temp);
-
             not_found(server, response);
-            send_response(server, response);
         }
     } else {
+        request := event.http_request;
         response := make_response(event,, temp);
 
-        html(server, response, "<html>Hello</html>");
+        if starts_with(request.uri, "/api") {
+            file := string.{ data = request.uri.data + 4, count = request.uri.count - 4 };
+            error := static_file_sync(server, response, file, join(path_strip_filename(get_path_of_running_executable()), "public",, temp));
+            if error then not_found(server, response);
+        } else {
+            html(server, response, "<html>Hello</html>");
+        }
+
         send_response(server, response);
     }
 }
@@ -56,4 +62,6 @@ handle_close :: (event: Http_Event) {
 }
 
 #import "Basic" () (MEMORY_DEBUGGER = true, TEMP_ALLOCATOR_POISON_FREED_MEMORY = true);
+#import "String";
+#import "System";
 #import,file "../module.jai" () (ENABLE_TLS = true);
