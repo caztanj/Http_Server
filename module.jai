@@ -670,6 +670,25 @@ set_timeout :: (client: *Http_Client, timeout: int) {
     client.timeout = current_time_monotonic() + seconds_to_apollo(timeout);
 }
 
+add_web_socket_event :: (events: *[..] Http_Event, socket: Socket.Socket, type: Web_Socket_Message_Type) -> *Http_Event {
+    event := array_add(events);
+
+    event.type = .Web_Socket_Message;
+    event.client_socket = socket;
+    event.web_socket_message.type = type;
+    event.web_socket_message.client_socket = socket;
+
+    return event;
+}
+
+add_web_socket_event :: (events: *[..] Http_Event, socket: Socket.Socket, type: Web_Socket_Message_Type, frame: Web_Socket_Frame) -> *Http_Event {
+    event := add_web_socket_event(events, socket, type);
+
+    event.web_socket_message.frame = frame;
+
+    return event;
+}
+
 maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, events: *[..] Http_Event) -> again: bool {
     client := find_client(server, socket);
     if client != null { // @Todo: assert(client != null)?
@@ -707,11 +726,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     }
 
                     if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
-                        event := array_add(events);
-                        event.type = .Web_Socket_Message;
-                        event.web_socket_message.type = .Error;
-                        event.web_socket_message.client_socket = client.socket;
-
+                        add_web_socket_event(events, socket, .Error);
                         return false;
                     }
 
@@ -775,12 +790,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     case .Control_Frame_Pong;
 
                     case .Control_Frame_Ping;
-                        event := array_add(events);
-                        event.type = .Web_Socket_Message;
-                        event.client_socket = socket;
-                        event.web_socket_message.type = .Ping;
-                        event.web_socket_message.client_socket = client.socket;
-                        event.web_socket_message.frame = frame;
+                        add_web_socket_event(events, socket, .Ping, frame);
 
                     case .Data_Frame_Text;
                         if client.request.waiting_for_fin_frame {
@@ -794,12 +804,7 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                             return false;
                         }
 
-                        event := array_add(events);
-                        event.type = .Web_Socket_Message;
-                        event.client_socket = socket;
-                        event.web_socket_message.type = .Text;
-                        event.web_socket_message.client_socket = client.socket;
-                        event.web_socket_message.frame = frame;
+                        add_web_socket_event(events, socket, .Text, frame);
 
                     case .Data_Frame_Binary;
                         if client.request.waiting_for_fin_frame {
@@ -807,19 +812,11 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                             return false;
                         }
 
-                        event := array_add(events);
-                        event.type = .Web_Socket_Message;
-                        event.client_socket = socket;
-                        event.web_socket_message.type = .Binary;
-                        event.web_socket_message.client_socket = client.socket;
-                        event.web_socket_message.frame = frame;
+                        add_web_socket_event(events, socket, .Binary, frame);
 
                     case;
-                        event := array_add(events);
-                        event.type = .Web_Socket_Message;
-                        event.client_socket = socket;
-                        event.web_socket_message.type = .Error;
-                        event.web_socket_message.client_socket = client.socket;
+                        add_web_socket_event(events, socket, .Error);
+
                 }
 
                 return again;

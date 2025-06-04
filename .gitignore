@@ -9,6 +9,7 @@ cert.pem
 key.pem
 *.exe
 *.pdb
+*.rdi
 .vs
 *.dSYM
 
