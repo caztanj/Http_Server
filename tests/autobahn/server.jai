@@ -31,12 +31,6 @@ main :: () {
             }
 
             if it.type == .Web_Socket_Message {
-                // @Todo: Should we turn this into a procedure? Maybe the user is using an extension that uses these so we cannot just always fail. Or maybe we want to use the .Error Web_Socket_Message_Type?
-                if it.web_socket_message.frame.rsv1 || it.web_socket_message.frame.rsv2 || it.web_socket_message.frame.rsv3 {
-                    fail_web_socket_connection(*server, it);
-                    continue;
-                }
-
                 if #complete it.web_socket_message.type == {
                     case .Ping;
                         send_web_socket_pong(*server, it);

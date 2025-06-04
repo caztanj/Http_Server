@@ -719,6 +719,11 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                     return false;
                 }
 
+                if frame.rsv1 || frame.rsv2 || frame.rsv3 {
+                    add_web_socket_event(events, socket, .Error);
+                    return false;
+                }
+
                 if !frame.fin {
                     if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
                         close(server, client);
