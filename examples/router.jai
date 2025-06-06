@@ -31,6 +31,8 @@ main :: () {
         html(server, response, "/hello/*/abc");
     });
 
+    static(*router, "/public", "public");
+
     quit := false;
     while !quit {
         error, events := http_server_update(*server);

@@ -37,17 +37,19 @@ fini :: (router: *Http_Router) {
     fini(*router.pool);
 }
 
-get     :: #bake_arguments add_route(method = .GET);
-head    :: #bake_arguments add_route(method = .HEAD);
-post    :: #bake_arguments add_route(method = .POST);
-put     :: #bake_arguments add_route(method = .PUT);
-delete  :: #bake_arguments add_route(method = .DELETE);
-connect :: #bake_arguments add_route(method = .CONNECT);
-options :: #bake_arguments add_route(method = .OPTIONS);
-trace   :: #bake_arguments add_route(method = .TRACE);
-patch   :: #bake_arguments add_route(method = .PATCH);
+get     :: #bake_arguments add_route(method = .GET,     static = false, folder = "");
+head    :: #bake_arguments add_route(method = .HEAD,    static = false, folder = "");
+post    :: #bake_arguments add_route(method = .POST,    static = false, folder = "");
+put     :: #bake_arguments add_route(method = .PUT,     static = false, folder = "");
+delete  :: #bake_arguments add_route(method = .DELETE,  static = false, folder = "");
+connect :: #bake_arguments add_route(method = .CONNECT, static = false, folder = "");
+options :: #bake_arguments add_route(method = .OPTIONS, static = false, folder = "");
+trace   :: #bake_arguments add_route(method = .TRACE,   static = false, folder = "");
+patch   :: #bake_arguments add_route(method = .PATCH,   static = false, folder = "");
 
-add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: Http_Route_Handler) -> error: bool {
+static :: #bake_arguments add_route(method = .GET, handler = null, static = true);
+
+add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: Http_Route_Handler, static: bool, folder: string) -> error: bool {
     ctx := context;
     ctx.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *router.pool };
 
@@ -99,7 +101,12 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
             chips = chip.children;
         }
 
+        chip.type = ifx static then .Static else .Dynamic;
         chip.handler = handler;
+
+        if static {
+            chip.folder = copy_string(folder);
+        }
 
         return false;
     }
@@ -135,6 +142,7 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, reque
     }
 
     parts := split(request.uri, "/",, temp);
+    offset := 0;
 
     for parts {
         if it == "" then continue;
@@ -148,11 +156,22 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, reque
         }
 
         chips = chip.children;
+        offset += path.count;
+
+        if chip.type == .Static then break;
     }
 
-    if chip.handler == null then return false;
+    if #complete chip.type == {
+        case .Dynamic;
+            if chip.handler == null then return false;
+            chip.handler(server, request, response);
 
-    chip.handler(server, request, response);
+        case .Static;
+            file := string.{ data = request.uri.data + offset, count = request.uri.count - offset };
+            error := static_file(server, response, file, join(path_strip_filename(get_path_of_running_executable()), chip.folder,, temp));
+            if error then return false;
+    }
+
     send_response(server, response);
 
     return true;
@@ -160,7 +179,17 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, reque
 
 #scope_module
 
+Chip_Type :: enum {
+    Dynamic;
+    Static;
+}
+
 Chip :: struct {
+    type: Chip_Type;
+
     handler: Http_Route_Handler;
     children: *Table(string, Chip);
+
+    // Only used when type == .Static
+    folder: string;
 }
