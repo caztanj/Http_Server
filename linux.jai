@@ -85,8 +85,15 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         client := find_client(server, ev.data.fd);
         assert(client != null);
 
+        error_events :: Linux.EPOLLPRI & Linux.EPOLLERR & Linux.EPOLLHUP;
+        if ev.events & error_events {
+            close(server, client);
+            continue;
+        }
+
         if ev.events & Linux.EPOLLIN {
-            read_from_client(server, client);
+            closed := read_from_client(server, client);
+            if closed then continue;
 
             while maybe_parse_request_or_web_socket_message(server, ev.data.fd, *events) {}
         }
@@ -94,8 +101,6 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         if ev.events & Linux.EPOLLOUT {
             while send_to_client(server, client) {}
         }
-
-        // @Todo: Handle other epoll events.
     }
 
     for server.closed_sockets {

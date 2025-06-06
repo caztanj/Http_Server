@@ -65,7 +65,8 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         }
 
         if it.revents & Socket.POLLIN {
-            read_from_client(server, client);
+            closed := read_from_client(server, client);
+            if closed then continue;
 
             while maybe_parse_request_or_web_socket_message(server, it.fd, *events) {}
         }

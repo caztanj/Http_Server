@@ -96,7 +96,7 @@ recv :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
     return Socket.recv(client.socket, buffer, xx size, 0);
 }
 
-read_from_client :: (server: *Http_Server, client: *Http_Client) {
+read_from_client :: (server: *Http_Server, client: *Http_Client) -> closed: bool {
     while true {
         offset := client.request.buffer.data + client.request.buffer_count;
         max    := client.request.buffer.count - client.request.buffer_count;
@@ -124,27 +124,29 @@ read_from_client :: (server: *Http_Server, client: *Http_Client) {
 
             if error != Socket.SOCKET_WOULDBLOCK {
                 close(server, client);
-                return;
+                return true;
             }
 
             set_timeout(client, 30);
-            return;
+            return false;
         }
 
         if bytes_read == 0 {
             close(server, client);
-            return;
+            return true;
         }
 
         client.request.buffer_count += bytes_read;
 
         if client.request.buffer_count == MAX_REQUEST_SIZE {
             close(server, client);
-            return;
+            return true;
         }
 
         set_timeout(client, 30);
     }
+
+    return false;
 }
 
 send :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> int {
