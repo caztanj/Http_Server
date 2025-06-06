@@ -52,4 +52,4 @@ main :: () {
 }
 
 #import "Basic";
-#import,file "../../module.jai" () (ENABLE_TLS = true, MAX_REQUEST_SIZE = 1_048_576 * 20);
+#import,file "../../module.jai" () (MAX_REQUEST_SIZE = 1_048_576 * 20);

@@ -29,7 +29,6 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
 
     key_magic := join(sec_web_socket_key, WEB_SOCKET_MAGIC,, temp);
 
-    // @Todo: We don't want to depend on LibreSSL here.
     hash: [LibreSSL.SHA_DIGEST_LENGTH] u8;
     LibreSSL.SHA1(key_magic.data, xx key_magic.count, hash.data);
 

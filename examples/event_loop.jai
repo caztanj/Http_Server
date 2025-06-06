@@ -64,4 +64,4 @@ handle_close :: (event: Http_Event) {
 #import "Basic" () (MEMORY_DEBUGGER = true, TEMP_ALLOCATOR_POISON_FREED_MEMORY = true);
 #import "String";
 #import "System";
-#import,file "../module.jai" () (ENABLE_TLS = true);
+#import,file "../module.jai";

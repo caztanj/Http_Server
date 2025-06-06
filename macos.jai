@@ -20,14 +20,12 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
 
     kqueue_event(server, server.socket, .READ, .ADD | .ENABLE);
 
-    #if ENABLE_TLS {
-        if tls {
-            server.ssl_ctx = create_context();
-            if server.ssl_ctx == null then return true;
+    if tls {
+        server.ssl_ctx = create_context();
+        if server.ssl_ctx == null then return true;
 
-            error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
-            if error then return true;
-        }
+        error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
+        if error then return true;
     }
 
     server.tls = tls;
@@ -40,10 +38,8 @@ shutdown :: (server: *Http_Server) {
         close(server, it);
     }
 
-    #if ENABLE_TLS {
-        if server.tls {
-            LibreSSL.SSL_CTX_free(server.ssl_ctx);
-        }
+    if server.tls {
+        LibreSSL.SSL_CTX_free(server.ssl_ctx);
     }
 
     array_reset(*server.kqueue_changes);
@@ -114,9 +110,7 @@ Http_Server :: struct {
 
     tls: bool;
 
-    #if ENABLE_TLS {
-        ssl_ctx: *LibreSSL.SSL_CTX;
-    }
+    ssl_ctx: *LibreSSL.SSL_CTX;
 
     kqueue_changes: [..] Macos.Kevent64;
     clients: Table(Socket.Socket, *Http_Client);
@@ -154,11 +148,9 @@ close :: (server: *Http_Server, client: *Http_Client, gracefully := false) {
         return;
     }
 
-    #if ENABLE_TLS {
-        if server.tls {
-            LibreSSL.SSL_shutdown(client.ssl);
-            LibreSSL.SSL_free(client.ssl);
-        }
+    if server.tls {
+        LibreSSL.SSL_shutdown(client.ssl);
+        LibreSSL.SSL_free(client.ssl);
     }
 
     array_add(*server.closed_sockets, client.socket);

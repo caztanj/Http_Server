@@ -24,4 +24,4 @@ main :: () {
 }
 
 #import "Basic";
-#import,file "../module.jai" () (ENABLE_TLS = true);
+#import,file "../module.jai";

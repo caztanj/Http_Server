@@ -1,4 +1,4 @@
-#module_parameters () (ENABLE_TLS := false, MAX_REQUEST_SIZE := 65536);
+#module_parameters () (MAX_REQUEST_SIZE := 65536);
 
 make_response :: (event: Http_Event) -> *Http_Response {
     return make_response(event.http_request);
@@ -12,11 +12,7 @@ make_response :: (request: *Http_Request) -> *Http_Response {
 
 Http_Event_Type :: enum {
     Http_Request;
-
-    #if ENABLE_TLS {
-        Web_Socket_Message;
-    }
-
+    Web_Socket_Message;
     Close;
 }
 
@@ -27,10 +23,7 @@ Http_Event :: struct {
 
     union {
         http_request: *Http_Request;
-
-        #if ENABLE_TLS {
-            web_socket_message: Web_Socket_Message;
-        }
+        web_socket_message: Web_Socket_Message;
     }
 }
 
@@ -614,9 +607,7 @@ Http_Client :: struct {
     socket: Socket.Socket;
     phase: Http_Client_Phase;
 
-    #if ENABLE_TLS {
-        ssl: *LibreSSL.SSL;
-    }
+    ssl: *LibreSSL.SSL;
 
     chunks_to_send: [..] Chunk;
 
@@ -693,139 +684,137 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
     client := find_client(server, socket);
     if client != null { // @Todo: assert(client != null)?
         if client.phase == .Web_Socket {
-            #if ENABLE_TLS {
-                if !client.request.waiting_for_fin_frame {
-                    client.request.t = client.request.buffer.data;
-                } else {
-                    client.request.t = client.request.buffer.data + client.request.buffer_offset;
-                }
+            if !client.request.waiting_for_fin_frame {
+                client.request.t = client.request.buffer.data;
+            } else {
+                client.request.t = client.request.buffer.data + client.request.buffer_offset;
+            }
 
-                client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+            client.request.max_t = client.request.buffer.data + client.request.buffer_count;
 
-                t     := client.request.t;
-                max_t := client.request.max_t;
+            t     := client.request.t;
+            max_t := client.request.max_t;
 
-                again := false;
+            again := false;
 
-                status, frame := parse_web_socket_frame(client,, temp);
-                if status == .Need_More_Data {
-                    client.request.t = t;
-                    client.request.max_t = max_t;
-                    return false;
-                }
+            status, frame := parse_web_socket_frame(client,, temp);
+            if status == .Need_More_Data {
+                client.request.t = t;
+                client.request.max_t = max_t;
+                return false;
+            }
 
-                if status == .Error {
+            if status == .Error {
+                close(server, client);
+                return false;
+            }
+
+            if frame.rsv1 || frame.rsv2 || frame.rsv3 {
+                add_web_socket_event(events, socket, .Error);
+                return false;
+            }
+
+            if !frame.fin {
+                if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
                     close(server, client);
                     return false;
                 }
 
-                if frame.rsv1 || frame.rsv2 || frame.rsv3 {
+                if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
                     add_web_socket_event(events, socket, .Error);
                     return false;
                 }
 
-                if !frame.fin {
-                    if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
+                client.request.waiting_for_fin_frame = true;
+                client.request.buffer_offset = client.request.t - client.request.buffer.data;
+
+                return true;
+            } else if client.request.waiting_for_fin_frame {
+                if frame.opcode == .Continuation {
+                    client.request.t     = client.request.buffer.data;
+                    client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+
+                    status, frame = merge_continuation_frames(client,, temp);
+                    if status != .Success {
                         close(server, client);
                         return false;
                     }
 
-                    if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
-                        add_web_socket_event(events, socket, .Error);
+                    client.request.waiting_for_fin_frame = false;
+
+                    if client.request.t < client.request.max_t {
+                        count := client.request.max_t - client.request.t;
+                        // @Robustness: Clean up these memcpys.
+                        memcpy(client.request.buffer.data, client.request.t, count);
+                        client.request.buffer_count = count;
+                        again = true;
+                    } else {
+                        client.request.buffer_count = 0;
+                        again = true;
+                    }
+                } else {
+                    memcpy(t, client.request.t, client.request.max_t - client.request.t);
+                    client.request.buffer_count -= client.request.t - t;
+                    client.request.t = t;
+                    again = true;
+                }
+            } else if client.request.t < client.request.max_t {
+                count := client.request.max_t - client.request.t;
+                memcpy(client.request.buffer.data, client.request.t, count);
+                client.request.buffer_count = count;
+                again = true;
+            } else {
+                client.request.buffer_count = 0;
+            }
+
+            if #complete frame.opcode == {
+                case .Continuation;
+                    if !client.request.waiting_for_fin_frame {
+                        close(server, client);
                         return false;
                     }
 
-                    client.request.waiting_for_fin_frame = true;
-                    client.request.buffer_offset = client.request.t - client.request.buffer.data;
+                case .Control_Frame_Close;
+                    event := array_add(events);
+                    event.type = .Close;
+                    event.client_socket = socket;
 
-                    return true;
-                } else if client.request.waiting_for_fin_frame {
-                    if frame.opcode == .Continuation {
-                        client.request.t     = client.request.buffer.data;
-                        client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+                    // @Todo: Only send if we have not done so yet.
+                    send_web_socket_close_frame(server, client);
 
-                        status, frame = merge_continuation_frames(client,, temp);
-                        if status != .Success {
-                            close(server, client);
-                            return false;
-                        }
+                case .Control_Frame_Pong;
 
-                        client.request.waiting_for_fin_frame = false;
+                case .Control_Frame_Ping;
+                    add_web_socket_event(events, socket, .Ping, frame);
 
-                        if client.request.t < client.request.max_t {
-                            count := client.request.max_t - client.request.t;
-                            // @Robustness: Clean up these memcpys.
-                            memcpy(client.request.buffer.data, client.request.t, count);
-                            client.request.buffer_count = count;
-                            again = true;
-                        } else {
-                            client.request.buffer_count = 0;
-                            again = true;
-                        }
-                    } else {
-                        memcpy(t, client.request.t, client.request.max_t - client.request.t);
-                        client.request.buffer_count -= client.request.t - t;
-                        client.request.t = t;
-                        again = true;
+                case .Data_Frame_Text;
+                    if client.request.waiting_for_fin_frame {
+                        close(server, client);
+                        return false;
                     }
-                } else if client.request.t < client.request.max_t {
-                    count := client.request.max_t - client.request.t;
-                    memcpy(client.request.buffer.data, client.request.t, count);
-                    client.request.buffer_count = count;
-                    again = true;
-                } else {
-                    client.request.buffer_count = 0;
-                }
 
-                if #complete frame.opcode == {
-                    case .Continuation;
-                        if !client.request.waiting_for_fin_frame {
-                            close(server, client);
-                            return false;
-                        }
+                    // @Todo: Autobahn 6.4.* are Non-Strict
+                    if !is_valid_utf8(frame.payload) {
+                        close(server, client);
+                        return false;
+                    }
 
-                    case .Control_Frame_Close;
-                        event := array_add(events);
-                        event.type = .Close;
-                        event.client_socket = socket;
+                    add_web_socket_event(events, socket, .Text, frame);
 
-                        // @Todo: Only send if we have not done so yet.
-                        send_web_socket_close_frame(server, client);
+                case .Data_Frame_Binary;
+                    if client.request.waiting_for_fin_frame {
+                        close(server, client);
+                        return false;
+                    }
 
-                    case .Control_Frame_Pong;
+                    add_web_socket_event(events, socket, .Binary, frame);
 
-                    case .Control_Frame_Ping;
-                        add_web_socket_event(events, socket, .Ping, frame);
+                case;
+                    add_web_socket_event(events, socket, .Error);
 
-                    case .Data_Frame_Text;
-                        if client.request.waiting_for_fin_frame {
-                            close(server, client);
-                            return false;
-                        }
-
-                        // @Todo: Autobahn 6.4.* are Non-Strict
-                        if !is_valid_utf8(frame.payload) {
-                            close(server, client);
-                            return false;
-                        }
-
-                        add_web_socket_event(events, socket, .Text, frame);
-
-                    case .Data_Frame_Binary;
-                        if client.request.waiting_for_fin_frame {
-                            close(server, client);
-                            return false;
-                        }
-
-                        add_web_socket_event(events, socket, .Binary, frame);
-
-                    case;
-                        add_web_socket_event(events, socket, .Error);
-
-                }
-
-                return again;
             }
+
+            return again;
         } else {
             status := parse_request(client);
             if #complete status == {
@@ -908,56 +897,54 @@ Socket :: #import "Socket";
 #load "tests/tests.jai";
 #load "websocket.jai";
 
-#if ENABLE_TLS {
-    create_context :: () -> *LibreSSL.SSL_CTX {
-        method := LibreSSL.TLS_server_method();
-        ctx := LibreSSL.SSL_CTX_new(method);
-        if !ctx {
-            print_ssl_errors();
-            return null;
-        }
-
-        return ctx;
+create_context :: () -> *LibreSSL.SSL_CTX {
+    method := LibreSSL.TLS_server_method();
+    ctx := LibreSSL.SSL_CTX_new(method);
+    if !ctx {
+        print_ssl_errors();
+        return null;
     }
 
-    configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool {
-        if LibreSSL.SSL_CTX_use_certificate_file(ctx, temp_c_string(certificate_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
-            print_ssl_errors();
-            return true;
-        }
-
-        if LibreSSL.SSL_CTX_use_PrivateKey_file(ctx, temp_c_string(private_key_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
-            print_ssl_errors();
-            return true;
-        }
-
-        return false;
-    }
-
-    print_ssl_errors :: () {
-        #if OS == .WINDOWS {
-            buffer: [1024] u8;
-            bio := LibreSSL.BIO_new(LibreSSL.BIO_s_mem());
-            LibreSSL.ERR_print_errors(bio);
-
-            s: string = ---;
-            s.data = buffer.data;
-
-            count := LibreSSL.BIO_read(bio, buffer.data, buffer.count);
-
-            if count > 0 {
-                s.count = count;
-                print("%\n", s);
-            }
-
-            LibreSSL.BIO_free(bio);
-        } else {
-            LibreSSL.ERR_print_errors_fp(POSIX.stderr);
-        }
-    }
-
-    LibreSSL :: #import,dir "modules/LibreSSL";
+    return ctx;
 }
+
+configure_context :: (ctx: *LibreSSL.SSL_CTX, certificate_file: string, private_key_file: string) -> error: bool {
+    if LibreSSL.SSL_CTX_use_certificate_file(ctx, temp_c_string(certificate_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
+        print_ssl_errors();
+        return true;
+    }
+
+    if LibreSSL.SSL_CTX_use_PrivateKey_file(ctx, temp_c_string(private_key_file), LibreSSL.SSL_FILETYPE_PEM) <= 0 {
+        print_ssl_errors();
+        return true;
+    }
+
+    return false;
+}
+
+print_ssl_errors :: () {
+    #if OS == .WINDOWS {
+        buffer: [1024] u8;
+        bio := LibreSSL.BIO_new(LibreSSL.BIO_s_mem());
+        LibreSSL.ERR_print_errors(bio);
+
+        s: string = ---;
+        s.data = buffer.data;
+
+        count := LibreSSL.BIO_read(bio, buffer.data, buffer.count);
+
+        if count > 0 {
+            s.count = count;
+            print("%\n", s);
+        }
+
+        LibreSSL.BIO_free(bio);
+    } else {
+        LibreSSL.ERR_print_errors_fp(POSIX.stderr);
+    }
+}
+
+LibreSSL :: #import,dir "modules/LibreSSL";
 
 #if OS == .LINUX {
     #load "linux.jai";
