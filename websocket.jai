@@ -139,13 +139,19 @@ fail_web_socket_connection :: (server: *Http_Server, client_socket: Socket.Socke
 
 Web_Socket_Frame :: struct {
     fin: bool;
+
     rsv1: bool;
     rsv2: bool;
     rsv3: bool;
+
     opcode: Web_Socket_Opcode;
+
     masked: bool;
+
     payload_length: u64;
+
     masking_key: [4] u8;
+
     payload: [..] u8;
 }
 
@@ -158,8 +164,9 @@ Web_Socket_Message_Type :: enum {
 
 Web_Socket_Message :: struct {
     client_socket: Socket.Socket;
-    type: Web_Socket_Message_Type;
-    frame: Web_Socket_Frame; // @Todo: Give the user the message instead of the frame.
+
+    type:  Web_Socket_Message_Type;
+    frame: Web_Socket_Frame;
 }
 
 #scope_module
