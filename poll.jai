@@ -222,6 +222,8 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
                     return true;
                 }
 
+                POSIX.close(client.sendfile_fd);
+
                 client.sendfile_fd = -1;
                 client.sendfile_count = -1;
                 client.sendfile_bytes_sent = 0;
