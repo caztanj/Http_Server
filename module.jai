@@ -59,10 +59,8 @@ Http_Response :: struct {
 
     body: string; // Temporary storage
 
-    #if OS == .LINUX {
-        sendfile_fd: s32 = -1;
-        sendfile_count: s64 = -1;
-    }
+    fd: s32 = -1;
+    fd_count: int;
 }
 
 Http_Method :: enum {
@@ -248,8 +246,8 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
                 set_header(*response.headers, "Keep-Alive", "timeout=30");
             }
 
-            response.sendfile_fd = fd;
-            response.sendfile_count = size;
+            response.fd = fd;
+            response.fd_count = size;
 
             return false;
         }
@@ -607,10 +605,19 @@ parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Hea
     return .Success, .{ key = key, value = value };
 }
 
+Chunk_Type :: enum {
+    Buffer;
+    File;
+}
+
 Chunk :: struct {
+    type: Chunk_Type;
+
     buffer:        [4096] u8;
     bytes_to_send: int;
     bytes_sent:    int;
+
+    file_fd: s32 = -1;
 }
 
 Http_Client_Phase :: enum {
@@ -626,12 +633,6 @@ Http_Client :: struct {
     ssl: *LibreSSL.SSL;
 
     chunks_to_send: [..] Chunk;
-
-    #if OS == .LINUX {
-        sendfile_fd: s32 = -1;
-        sendfile_count: s32 = -1;
-        sendfile_bytes_sent: s32;
-    }
 
     timeout: Apollo_Time;
 

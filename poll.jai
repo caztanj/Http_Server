@@ -33,10 +33,14 @@ send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool
         done = serialized.count == 0;
     }
 
-    #if OS == .LINUX {
-        if response.sendfile_fd != -1 {
-            client.sendfile_fd = response.sendfile_fd;
-        }
+    if response.fd != -1 {
+        assert(OS == .LINUX);
+
+        chunk := array_add(*client.chunks_to_send);
+
+        chunk.type = .File;
+        chunk.file_fd = response.fd;
+        chunk.bytes_to_send = response.fd_count;
     }
 
     send_data_to_client(server, client);
@@ -161,104 +165,94 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
     assert(client.chunks_to_send.count > 0);
     chunk := *client.chunks_to_send[0];
 
-    while chunk.bytes_to_send - chunk.bytes_sent > 0 {
-        offset := chunk.buffer.data + chunk.bytes_sent;
-        max    := chunk.bytes_to_send - chunk.bytes_sent;
-
-        bytes_sent := send(server, client, offset, max);
-        if bytes_sent == -1 {
-            error := Socket.get_last_socket_error();
-
-            if server.tls {
-                if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
-                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
-                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
-                }
-            }
-
-            if error != Socket.SOCKET_WOULDBLOCK {
-                close(server, client);
-                return false;
-            }
-
-            set_timeout(client, 30);
-            return false;
-        }
-
-        chunk.bytes_sent += bytes_sent;
-
-        set_timeout(client, 30);
-    }
-
-    if chunk.bytes_to_send - chunk.bytes_sent == 0 {
-        array_ordered_remove_by_index(*client.chunks_to_send, 0);
-
-        if client.chunks_to_send.count > 0 {
-            return true;
-        }
+    if chunk.type == .File {
+        // sendfile does not work if we are using TLS.
+        assert(!server.tls && OS == .LINUX);
 
         #if OS == .LINUX {
-            if client.sendfile_fd != -1 {
-                // sendfile does not work if we are using TLS.
-                assert(!server.tls);
+            max := chunk.bytes_to_send - chunk.bytes_sent;
+            bytes_sent := sendfile(client.socket, chunk.file_fd, null, xx max);
+            if bytes_sent <= 0 {
+                error := Socket.get_last_socket_error();
 
-                max := client.sendfile_count - client.sendfile_bytes_sent;
-                bytes_sent := sendfile(client.socket, client.sendfile_fd, null, max);
-                if bytes_sent <= 0 {
-                    error := Socket.get_last_socket_error();
-
-                    if error != Socket.SOCKET_WOULDBLOCK {
-                        close(server, client);
-                        return false;
-                    }
-
-                    set_timeout(client, 30);
+                if error != Socket.SOCKET_WOULDBLOCK {
+                    close(server, client);
                     return false;
                 }
 
-                client.sendfile_bytes_sent += bytes_sent;
+                set_timeout(client, 30);
+                return false;
+            }
 
-                if client.sendfile_count - client.sendfile_bytes_sent != 0 {
-                    return true;
+            chunk.bytes_sent += bytes_sent;
+
+            if chunk.bytes_to_send - chunk.bytes_sent != 0 return true;
+
+            POSIX.close(chunk.file_fd);
+        }
+    } else {
+        while chunk.bytes_to_send - chunk.bytes_sent > 0 {
+            offset := chunk.buffer.data + chunk.bytes_sent;
+            max    := chunk.bytes_to_send - chunk.bytes_sent;
+
+            bytes_sent := send(server, client, offset, max);
+            if bytes_sent == -1 {
+                error := Socket.get_last_socket_error();
+
+                if server.tls {
+                    if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
+                        case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                        case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
+                    }
                 }
 
-                POSIX.close(client.sendfile_fd);
+                if error != Socket.SOCKET_WOULDBLOCK {
+                    close(server, client);
+                    return false;
+                }
 
-                client.sendfile_fd = -1;
-                client.sendfile_count = -1;
-                client.sendfile_bytes_sent = 0;
+                set_timeout(client, 30);
+                return false;
             }
+
+            chunk.bytes_sent += bytes_sent;
+
+            set_timeout(client, 30);
         }
-
-        if client.close_after_send {
-            close(server, client);
-            return false;
-        }
-
-        client.request.uri = "";
-        client.request.method = .GET;
-
-        free(client.request.body.data);
-        client.request.body.count = 0;
-
-        array_reset(*client.request.headers);
-
-        if client.phase != .Web_Socket {
-            if client.request.t < client.request.max_t {
-                count := client.request.max_t - client.request.t;
-                memcpy(client.request.buffer.data, client.request.t, count);
-                client.request.buffer_count = count;
-            } else {
-                client.request.buffer_count = 0;
-            }
-        }
-
-        if client.phase == .Upgrading_To_Web_Socket {
-            client.phase = .Web_Socket;
-        }
-
-        read_data_from_client(server, client);
     }
+
+    array_ordered_remove_by_index(*client.chunks_to_send, 0);
+
+    if client.chunks_to_send.count > 0 return true;
+
+    if client.close_after_send {
+        close(server, client);
+        return false;
+    }
+
+    client.request.uri = "";
+    client.request.method = .GET;
+
+    free(client.request.body.data);
+    client.request.body.count = 0;
+
+    array_reset(*client.request.headers);
+
+    if client.phase != .Web_Socket {
+        if client.request.t < client.request.max_t {
+            count := client.request.max_t - client.request.t;
+            memcpy(client.request.buffer.data, client.request.t, count);
+            client.request.buffer_count = count;
+        } else {
+            client.request.buffer_count = 0;
+        }
+    }
+
+    if client.phase == .Upgrading_To_Web_Socket {
+        client.phase = .Web_Socket;
+    }
+
+    read_data_from_client(server, client);
 
     return false;
 }
