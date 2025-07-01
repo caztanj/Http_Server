@@ -5,7 +5,7 @@ main :: () {
     if error then return;
 
     router: Http_Router;
-    init(*router, *server);
+    init(*router);
 
     get(*router, "/", (server: *Http_Server, request: *Http_Request, response: *Http_Response) {
         html(server, response, "/");

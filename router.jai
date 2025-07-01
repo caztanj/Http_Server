@@ -15,7 +15,7 @@ Http_Router :: struct {
 
 Http_Route_Handler :: #type (server: *Http_Server, request: *Http_Request, response: *Http_Response);
 
-init :: (router: *Http_Router, server: *Http_Server) {
+init :: (router: *Http_Router) {
     ctx := context;
     ctx.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *router.pool };
 
