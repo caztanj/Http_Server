@@ -3,7 +3,7 @@
     "servers": [
         {
             "agent": "Http_Server",
-            "url": "ws://192.168.0.3:3000"
+            "url": "ws://localhost:3000"
         }
     ],
     "cases": [
