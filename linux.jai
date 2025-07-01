@@ -2,47 +2,47 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
     POSIX.signal(POSIX.SIGPIPE, POSIX.SIG_IGN);
 
     server.epoll = Linux.epoll_create1(0);
-    if server.epoll == -1 then return true;
+    if server.epoll == -1 return true;
 
     server.socket = Socket.socket(Socket.AF_INET6, .SOCK_STREAM, Socket.IPPROTO.IPPROTO_TCP);
-    if server.socket == Socket.INVALID_SOCKET then return true;
+    if server.socket == Socket.INVALID_SOCKET return true;
 
     options := 1;
     result := Socket.setsockopt(server.socket, Socket.SOL_SOCKET, Socket.SO_REUSEPORT, *options, size_of(type_of(options)));
-    if result == -1 then return true;
+    if result == -1 return true;
 
     // On Linux we can use both IPv4 and IPv6 if we open an IPv6 socket. This behaviour can be turned off with these 2 lines:
     // enable := 1;
     // result = Socket.setsockopt(server.socket, xx Socket.IPPROTO.IPPROTO_IPV6, Socket.IPV6_V6ONLY, *enable, size_of(type_of(enable)));
 
     result = Socket.bind(server.socket, Socket.in6addr_any.__in6_u.__u6_addr8, port);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     result = Socket.listen(server.socket, Socket.SOMAXCONN);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     success := Socket.set_blocking(server.socket, false);
-    if !success then return true;
+    if !success return true;
 
     error := epoll_add(server.epoll, server.socket, Linux.EPOLLIN);
-    if error then return true;
+    if error return true;
 
     mask: POSIX.sigset_t;
     POSIX.sigemptyset(*mask);
     POSIX.sigaddset(*mask, POSIX.SIGINT);
     POSIX.sigprocmask(POSIX.SIG_BLOCK, *mask, null);
     server.sigint = POSIX.signalfd(-1, *mask, xx POSIX.SFD.CLOEXEC);
-    if server.sigint == -1 then return true;
+    if server.sigint == -1 return true;
 
     error = epoll_add(server.epoll, server.sigint, Linux.EPOLLIN);
-    if error then return true;
+    if error return true;
 
     if tls {
         server.ssl_ctx = create_context();
-        if server.ssl_ctx == null then return true;
+        if server.ssl_ctx == null return true;
 
         error = configure_context(server.ssl_ctx, certificate_file, private_key_file);
-        if error then return true;
+        if error return true;
     }
 
     server.tls = tls;
@@ -70,7 +70,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
 
     epoll_events: [1024] Linux.epoll_event;
     nfds := Linux.epoll_wait(server.epoll, epoll_events.data, epoll_events.count, xx ifx peek then 0 else timeout);
-    if nfds == -1 then return true, .[];
+    if nfds == -1 return true, .[];
 
     for i: 0..nfds - 1 {
         ev := epoll_events[i];
@@ -80,7 +80,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
             continue;
         }
 
-        if ev.data.fd == server.sigint then return true, .[];
+        if ev.data.fd == server.sigint return true, .[];
 
         client := find_client(server, ev.data.fd);
         assert(client != null);
@@ -93,7 +93,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
 
         if ev.events & Linux.EPOLLIN {
             closed := read_from_client(server, client);
-            if closed then continue;
+            if closed continue;
 
             while maybe_parse_request_or_web_socket_message(server, ev.data.fd, *events) {}
         }

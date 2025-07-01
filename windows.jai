@@ -2,25 +2,25 @@ init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", 
     Socket.socket_init();
 
     server.socket = Socket.socket(Socket.AF_INET, .SOCK_STREAM, Socket.IPPROTO.IPPROTO_TCP);
-    if server.socket == Socket.INVALID_SOCKET then return true;
+    if server.socket == Socket.INVALID_SOCKET return true;
 
     result := Socket.bind(server.socket, Socket.INADDR_ANY, port);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     result = Socket.listen(server.socket, Socket.SOMAXCONN);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     success := Socket.set_blocking(server.socket, false);
-    if !success then return true;
+    if !success return true;
 
     poll_add(server, server.socket, Socket.POLLIN);
 
     if tls {
         server.ssl_ctx = create_context();
-        if server.ssl_ctx == null then return true;
+        if server.ssl_ctx == null return true;
 
         error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
-        if error then return true;
+        if error return true;
     }
 
     server.tls = tls;
@@ -48,7 +48,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
     timeout := process_timeouts_and_get_next_timeout(server);
 
     nevents := Socket.WSAPoll(server.events.data, xx server.events.count, xx ifx peek then 0 else timeout);
-    if nevents == Socket.SOCKET_ERROR then return true, .[];
+    if nevents == Socket.SOCKET_ERROR return true, .[];
 
     for server.events {
         if it.fd == server.socket {
@@ -66,7 +66,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
 
         if it.revents & Socket.POLLIN {
             closed := read_from_client(server, client);
-            if closed then continue;
+            if closed continue;
 
             while maybe_parse_request_or_web_socket_message(server, it.fd, *events) {}
         }

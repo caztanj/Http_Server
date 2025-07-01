@@ -2,12 +2,12 @@ main :: () {
     server: Http_Server;
 
     error := init(*server, 3000);
-    if error then return;
+    if error return;
 
     quit := false;
     while !quit {
         error, events := http_server_update(*server);
-        if error then quit = true;
+        if error quit = true;
 
         for events {
             if #complete it.type == {
@@ -44,7 +44,7 @@ handle_request :: (server: *Http_Server, event: Http_Event) {
         if starts_with(request.uri, "/api") {
             file := string.{ data = request.uri.data + 4, count = request.uri.count - 4 };
             error := static_file(server, response, file, join(path_strip_filename(get_path_of_running_executable()), "public",, temp));
-            if error then not_found(server, response);
+            if error not_found(server, response);
         } else {
             html(server, response, "<html>Hello</html>");
         }

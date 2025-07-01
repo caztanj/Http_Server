@@ -4,17 +4,17 @@ is_web_socket_upgrade :: (event: Http_Event) -> bool {
 
 is_web_socket_upgrade :: (request: *Http_Request) -> bool {
     error, upgrade := get_header(request.headers, "Upgrade");
-    if error then return false;
+    if error return false;
 
-    if !equal_nocase(upgrade, "websocket") then return false;
+    if !equal_nocase(upgrade, "websocket") return false;
 
     error=, sec_web_socket_version := get_header(request.headers, "Sec-WebSocket-Version");
-    if error then return false;
+    if error return false;
 
-    if !equal_nocase(sec_web_socket_version, "13") then return false;
+    if !equal_nocase(sec_web_socket_version, "13") return false;
 
     error=, sec_web_socket_key := get_header(request.headers, "Sec-WebSocket-Key");
-    if error then return false;
+    if error return false;
 
     return true;
 }
@@ -25,7 +25,7 @@ perform_web_socket_upgrade :: (server: *Http_Server, event: Http_Event) -> error
 
 perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> error: bool {
     error, sec_web_socket_key := get_header(request.headers, "Sec-WebSocket-Key");
-    if error then return true;
+    if error return true;
 
     key_magic := join(sec_web_socket_key, WEB_SOCKET_MAGIC,, temp);
 
@@ -43,7 +43,7 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     set_header(*response.headers, "Sec-WebSocket-Accept", accept);
 
     client := find_client(server, request.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     client.phase = .Upgrading_To_Web_Socket;
 
@@ -58,9 +58,9 @@ send_web_socket_text :: (server: *Http_Server, event: Http_Event, text: string) 
 
 send_web_socket_text :: (server: *Http_Server, client_socket: Socket.Socket, text: string) -> error: bool {
     client := find_client(server, client_socket);
-    if client == null then return true;
+    if client == null return true;
 
-    if client.close_after_send then return true;
+    if client.close_after_send return true;
 
     frame := Web_Socket_Frame.{
         fin = true,
@@ -82,9 +82,9 @@ send_web_socket_blob :: (server: *Http_Server, event: Http_Event, data: [] u8) -
 
 send_web_socket_blob :: (server: *Http_Server, client_socket: Socket.Socket, data: [] u8) -> error: bool {
     client := find_client(server, client_socket);
-    if client == null then return true;
+    if client == null return true;
 
-    if client.close_after_send then return true;
+    if client.close_after_send return true;
 
     frame := Web_Socket_Frame.{
         fin = true,
@@ -106,9 +106,9 @@ send_web_socket_pong :: (server: *Http_Server, event: Http_Event) -> error: bool
 
 send_web_socket_pong :: (server: *Http_Server, client_socket: Socket.Socket, ping_frame: Web_Socket_Frame) -> error: bool {
     client := find_client(server, client_socket);
-    if client == null then return false;
+    if client == null return false;
 
-    if client.close_after_send then return true;
+    if client.close_after_send return true;
 
     frame := Web_Socket_Frame.{
         fin = true,
@@ -128,9 +128,9 @@ fail_web_socket_connection :: (server: *Http_Server, event: Http_Event) -> error
 
 fail_web_socket_connection :: (server: *Http_Server, client_socket: Socket.Socket) -> error: bool {
     client := find_client(server, client_socket);
-    if client == null then return true;
+    if client == null return true;
 
-    if client.close_after_send then return true;
+    if client.close_after_send return true;
 
     close(server, client, gracefully = true);
 
@@ -189,27 +189,27 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
     frame.opcode = xx client.request.t.* & 0b00001111;
 
     client.request.t += 1;
-    if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
+    if client.request.t >= client.request.max_t return .Need_More_Data, .{};
 
     frame.masked = xx client.request.t.* & 0b10000000;
     frame.payload_length = client.request.t.* & 0b01111111;
 
     client.request.t += 1;
-    if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
+    if client.request.t >= client.request.max_t return .Need_More_Data, .{};
 
     if frame.payload_length == 126 {
         frame.payload_length = client.request.t.*;
         frame.payload_length <<= 8;
 
         client.request.t += 1;
-        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
+        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
 
         frame.payload_length |= client.request.t.*;
 
         client.request.t += 1;
-        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
+        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
     } else if frame.payload_length == 127 {
-        if (client.request.t + 7) >= client.request.max_t then return .Need_More_Data, .{};
+        if (client.request.t + 7) >= client.request.max_t return .Need_More_Data, .{};
 
         // @Robustness
 
@@ -225,11 +225,11 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
         frame.payload_length = b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
 
         client.request.t += 8;
-        if client.request.t >= client.request.max_t then return .Need_More_Data, .{};
+        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
     }
 
     if frame.masked {
-        if client.request.max_t - client.request.t < 4 then return .Need_More_Data, .{};
+        if client.request.max_t - client.request.t < 4 return .Need_More_Data, .{};
 
         memcpy(frame.masking_key.data, client.request.t, 4);
 
@@ -241,9 +241,9 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
         }
     }
 
-    if frame.opcode == .Control_Frame_Ping && frame.payload_length > 125 then return .Error, .{};
+    if frame.opcode == .Control_Frame_Ping && frame.payload_length > 125 return .Error, .{};
 
-    if xx (client.request.max_t - client.request.t) < frame.payload_length then return .Need_More_Data, .{};
+    if xx (client.request.max_t - client.request.t) < frame.payload_length return .Need_More_Data, .{};
 
     array_resize(*frame.payload, xx frame.payload_length);
     memcpy(frame.payload.data, client.request.t, xx frame.payload_length);
@@ -265,14 +265,14 @@ merge_continuation_frames :: (client: *Http_Client) -> Parse_Web_Socket_Frame_St
     done := false;
     while !done {
         status, frame := parse_web_socket_frame(client,, temp);
-        if status != .Success then return status, .{};
+        if status != .Success return status, .{};
 
         count := frame.payload.count;
         array_add(*merged_frame.payload, ..frame.payload);
 
         merged_frame.payload_length += frame.payload_length;
 
-        if frame.fin then done = true;
+        if frame.fin done = true;
     }
 
     merged_frame.fin = true;

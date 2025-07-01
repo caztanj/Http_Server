@@ -18,15 +18,15 @@ run_http_server :: () {
     server: Http_Server;
 
     error := init(*server, 3000);
-    if error then return;
+    if error return;
 
     quit := false;
     while !quit {
         error, events := http_server_update(*server);
-        if error then quit = true;
+        if error quit = true;
 
         for events {
-            if it.type != .Http_Request then continue;
+            if it.type != .Http_Request continue;
 
             response := make_response(it,, temp);
             html(*server, response, "<html>Hello</html>");

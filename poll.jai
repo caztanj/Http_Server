@@ -1,6 +1,6 @@
 send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool {
     client := find_client(server, response.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     assert(response.status != .None);
 
@@ -56,7 +56,7 @@ accept_clients :: (server: *Http_Server) {
 
         if socket == Socket.INVALID_SOCKET {
             error := Socket.get_last_socket_error();
-            if error == Socket.SOCKET_WOULDBLOCK then return;
+            if error == Socket.SOCKET_WOULDBLOCK return;
             continue;
         }
 
@@ -239,7 +239,7 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
 }
 
 process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {
-    if server.clients.count == 0 then return -1;
+    if server.clients.count == 0 return -1;
 
     now := current_time_monotonic();
     earliest := -1;
@@ -252,7 +252,7 @@ process_timeouts_and_get_next_timeout :: (server: *Http_Server) -> int {
 
         this := to_milliseconds(it.timeout - now);
 
-        if earliest == -1 || this < earliest then earliest = this;
+        if earliest == -1 || this < earliest earliest = this;
     }
 
     return earliest;

@@ -2,7 +2,7 @@ main :: () {
     server: Http_Server;
 
     error := init(*server, 3000);
-    if error then return;
+    if error return;
 
     router: Http_Router;
     init(*router);
@@ -36,10 +36,10 @@ main :: () {
     quit := false;
     while !quit {
         error, events := http_server_update(*server);
-        if error then quit = true;
+        if error quit = true;
 
         for events {
-            if it.type != .Http_Request then continue;
+            if it.type != .Http_Request continue;
 
             handled := http_router_handle_request(*server, *router, it);
             if !handled {

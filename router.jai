@@ -54,7 +54,7 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
     ctx.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *router.pool };
 
     push_context ctx {
-        if !starts_with(path, "/") then return true;
+        if !starts_with(path, "/") return true;
 
         chip: *Chip;
         chips: *Table(string, Chip);
@@ -86,7 +86,7 @@ add_route :: (router: *Http_Router, method: Http_Method, path: string, handler: 
         chips = chip.children;
 
         for i: 2..parts.count - 1 {
-            if parts[i] == "" then continue;
+            if parts[i] == "" continue;
 
             path := sprint("/%", parts[i]);
 
@@ -119,7 +119,7 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, event
 http_router_handle_request :: (server: *Http_Server, router: *Http_Router, request: *Http_Request) -> handled: bool {
     response := make_response(request,, temp);
 
-    if !starts_with(request.uri, "/") then return false;
+    if !starts_with(request.uri, "/") return false;
 
     chip: *Chip;
     chips: *Table(string, Chip);
@@ -138,38 +138,38 @@ http_router_handle_request :: (server: *Http_Server, router: *Http_Router, reque
 
     if request.uri == "/" {
         chip = table_find_pointer(chips, "/");
-        if chip == null then return false;
+        if chip == null return false;
     }
 
     parts := split(request.uri, "/",, temp);
     offset := 0;
 
     for parts {
-        if it == "" then continue;
+        if it == "" continue;
 
         path := tprint("/%", it);
 
         chip = table_find_pointer(chips, path);
         if chip == null {
             chip = table_find_pointer(chips, "/*");
-            if chip == null then return false;
+            if chip == null return false;
         }
 
         chips = chip.children;
         offset += path.count;
 
-        if chip.type == .Static then break;
+        if chip.type == .Static break;
     }
 
     if #complete chip.type == {
         case .Dynamic;
-            if chip.handler == null then return false;
+            if chip.handler == null return false;
             chip.handler(server, request, response);
 
         case .Static;
             file := string.{ data = request.uri.data + offset, count = request.uri.count - offset };
             error := static_file(server, response, file, join(path_strip_filename(get_path_of_running_executable()), chip.folder,, temp));
-            if error then return false;
+            if error return false;
     }
 
     send_response(server, response);

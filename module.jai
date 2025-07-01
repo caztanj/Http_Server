@@ -188,7 +188,7 @@ set_header :: (headers: *[..] Http_Header, key: string, value: string) {
 
 get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
     for headers {
-        if equal_nocase(it.key, key) then return false, it.value;
+        if equal_nocase(it.key, key) return false, it.value;
     }
 
     return true, "";
@@ -198,16 +198,16 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
     path := join(directory, "/", file,, temp);
 
     // @Todo: Make a function that checks if the resolved path is in the directory.
-    if contains(path, "..") then return true;
+    if contains(path, "..") return true;
 
     #if OS == .LINUX {
         if !file_exists(path) {
             path = join(path, "/index.html",, temp);
-            if !file_exists(path) then return true;
+            if !file_exists(path) return true;
         }
 
         fd := POSIX.open(temp_c_string(path), POSIX.O_RDONLY);
-        if fd == -1 then return true;
+        if fd == -1 return true;
 
         file_stat: POSIX.stat_t;
         result := POSIX.fstat(fd, *file_stat);
@@ -256,7 +256,7 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
         if !success {
             path = join(path, "/index.html",, temp);
             content, success = read_entire_file(path,, temp);
-            if !success then return true;
+            if !success return true;
         }
 
         if ends_with(path, ".html") {
@@ -297,7 +297,7 @@ json :: (server: *Http_Server, response: *Http_Response, json: string) -> error:
 
 not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
     client := find_client(server, response.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     response.status = .Not_Found;
 
@@ -315,7 +315,7 @@ not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 
 bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
     client := find_client(server, response.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     response.status = .Bad_Request;
 
@@ -331,7 +331,7 @@ bad_request :: (server: *Http_Server, response: *Http_Response) -> error: bool {
 
 internal_server_error :: (server: *Http_Server, response: *Http_Response) -> error: bool {
     client := find_client(server, response.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     response.status = .Internal_Server_Error;
 
@@ -357,13 +357,13 @@ decode_uri :: (uri: string) -> error: bool, string {
     while t < max_t {
         if t.* == #char "%" {
             t += 2;
-            if t >= max_t then return true, "";
+            if t >= max_t return true, "";
 
             current.data = t - 1;
-            if !is_digits(current) then return true, "";
+            if !is_digits(current) return true, "";
 
             result, success := string_to_int(current, 16, u8);
-            if !success then return true, "";
+            if !success return true, "";
 
             append(*b, *result, 1);
         } else {
@@ -419,7 +419,7 @@ print_http_request :: (request: *Http_Request) {
 
 text_response :: (server: *Http_Server, response: *Http_Response, text: string, content_type: string) -> error: bool {
     client := find_client(server, response.client_socket);
-    if client == null then return true;
+    if client == null return true;
 
     response.status = .Ok;
     response.body   = text;
@@ -442,7 +442,7 @@ is_digits :: (s: string) -> bool {
     max_t := t + s.count;
 
     while t < max_t {
-        if t.* < #char "0" || t.* > #char "9" then return false;
+        if t.* < #char "0" || t.* > #char "9" return false;
         t += 1;
     }
 
@@ -460,25 +460,25 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     client.request.max_t = client.request.t + client.request.buffer_count;
 
     status := parse_request_line(*client.request);
-    if status != .Success then return status;
+    if status != .Success return status;
 
     content_length := 0;
 
     while true {
         if client.request.t.* == #char "\r" {
             client.request.t += 1;
-            if client.request.t >= client.request.max_t then return .Need_More_Data;
-            if client.request.t.* != #char "\n"         then return .Error;
+            if client.request.t >= client.request.max_t return .Need_More_Data;
+            if client.request.t.* != #char "\n"         return .Error;
             client.request.t += 1;
             break;
         }
 
         status, header := parse_header(*client.request);
-        if status != .Success then return status;
+        if status != .Success return status;
 
         if equal_nocase(header.key, "Content-Length") {
             result, success := string_to_int(header.value);
-            if !success then return .Error;
+            if !success return .Error;
             content_length = result;
         }
 
@@ -486,7 +486,7 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     }
 
     if content_length {
-        if client.request.t + content_length > client.request.max_t then return .Need_More_Data;
+        if client.request.t + content_length > client.request.max_t return .Need_More_Data;
 
         client.request.body = copy_string(string.{ data = client.request.t, count = content_length });
 
@@ -500,13 +500,13 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     m := string.{ data = t };
 
     while t < max_t {
-        if t - m.data > 7      then return .Error;
-        if t.* == #char " "    then break;
-        if t.* == #char "\r"   then return .Error;
+        if t - m.data > 7      return .Error;
+        if t.* == #char " "    break;
+        if t.* == #char "\r"   return .Error;
         t += 1;
     }
 
-    if t >= max_t then return .Need_More_Data;
+    if t >= max_t return .Need_More_Data;
 
     m.count = t - m.data;
 
@@ -525,32 +525,32 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     }
 
     t += 1;
-    if t >= max_t then return .Need_More_Data;
+    if t >= max_t return .Need_More_Data;
 
     uri.data = t;
 
     while t < max_t {
-        if t.* == #char " "  then break;
-        if t.* == #char "\r" then return .Error;
+        if t.* == #char " "  break;
+        if t.* == #char "\r" return .Error;
         t += 1;
     }
 
-    if t >= max_t then return .Need_More_Data;
+    if t >= max_t return .Need_More_Data;
 
     uri.count = t - uri.data;
 
     t += 1;
-    if t >= max_t then return .Need_More_Data;
+    if t >= max_t return .Need_More_Data;
 
     version := string.{ data = t };
 
     while t < max_t {
-        if t - version.data > 8 then return .Error;
+        if t - version.data > 8 return .Error;
 
         if t.* == #char "\r" {
             t += 1;
-            if t >= max_t        then return .Need_More_Data;
-            if t.* != #char "\n" then return .Error;
+            if t >= max_t        return .Need_More_Data;
+            if t.* != #char "\n" return .Error;
             break;
         }
 
@@ -558,10 +558,10 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
         t += 1;
     }
 
-    if version != "HTTP/1.1" then return .Error;
+    if version != "HTTP/1.1" return .Error;
 
     t += 1;
-    if t >= max_t then return .Need_More_Data;
+    if t >= max_t return .Need_More_Data;
 
     return .Success;
 }
@@ -570,26 +570,26 @@ parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Hea
     key := string.{ data = t };
 
     while t < max_t {
-        if t.* == #char ":" then break;
+        if t.* == #char ":" break;
         t += 1;
     }
 
-    if t >= max_t then return .Need_More_Data, .{};
+    if t >= max_t return .Need_More_Data, .{};
 
     key.count = t - key.data;
 
     key = trim(key, chars=" ");
 
     t += 1;
-    if t >= max_t then return .Need_More_Data, .{};
+    if t >= max_t return .Need_More_Data, .{};
 
     value := string.{ data = t };
 
     while t < max_t {
         if t.* == #char "\r" {
             t += 1;
-            if t >= max_t        then return .Need_More_Data, .{};
-            if t.* != #char "\n" then return .Error, .{};
+            if t >= max_t        return .Need_More_Data, .{};
+            if t.* != #char "\n" return .Error, .{};
             break;
         }
 
@@ -598,7 +598,7 @@ parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Hea
     }
 
     t += 1;
-    if t >= max_t then return .Need_More_Data, .{};
+    if t >= max_t return .Need_More_Data, .{};
 
     value = trim(value, chars=" ");
 
@@ -657,7 +657,7 @@ add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
 
 find_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
     success, client := table_find_new(*server.clients, socket);
-    if !success then return null;
+    if !success return null;
     return client;
 }
 

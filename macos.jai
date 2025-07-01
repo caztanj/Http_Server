@@ -1,31 +1,31 @@
 init :: (server: *Http_Server, port: u16, tls := false, certificate_file := "", private_key_file := "") -> error: bool {
     server.kqueue = Macos.kqueue();
-    if server.kqueue == -1 then return true;
+    if server.kqueue == -1 return true;
 
     server.socket = Socket.socket(Socket.AF_INET, .SOCK_STREAM, Socket.IPPROTO.IPPROTO_TCP);
-    if server.socket == Socket.INVALID_SOCKET then return true;
+    if server.socket == Socket.INVALID_SOCKET return true;
 
     options := 1;
     result := Socket.setsockopt(server.socket, Socket.SOL_SOCKET, Socket.SO_REUSEPORT, *options, size_of(type_of(options)));
-    if result == -1 then return true;
+    if result == -1 return true;
 
     result = Socket.bind(server.socket, Socket.INADDR_ANY, port);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     result = Socket.listen(server.socket, Socket.SOMAXCONN);
-    if result != 0 then return true;
+    if result != 0 return true;
 
     success := Socket.set_blocking(server.socket, false);
-    if !success then return true;
+    if !success return true;
 
     kqueue_event(server, server.socket, .READ, .ADD | .ENABLE);
 
     if tls {
         server.ssl_ctx = create_context();
-        if server.ssl_ctx == null then return true;
+        if server.ssl_ctx == null return true;
 
         error := configure_context(server.ssl_ctx, certificate_file, private_key_file);
-        if error then return true;
+        if error return true;
     }
 
     server.tls = tls;
@@ -55,7 +55,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
     ts: POSIX.timespec;
     ts.tv_sec = max(timeout, 0);
 
-    if peek then ts.tv_sec = 0;
+    if peek ts.tv_sec = 0;
 
     kevents: [1024] Macos.Kevent64;
     nfds := Macos.kevent64(
@@ -67,7 +67,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
         0,
         ifx timeout == -1 && !peek then null else *ts
     );
-    if nfds == -1 then return true, .[];
+    if nfds == -1 return true, .[];
 
     array_reset_keeping_memory(*server.kqueue_changes);
 
@@ -84,7 +84,7 @@ http_server_update :: (server: *Http_Server, peek := false) -> error: bool, [] H
 
         if ev.filter == .READ {
             closed := read_from_client(server, client);
-            if closed then continue;
+            if closed continue;
 
             while maybe_parse_request_or_web_socket_message(server, xx ev.ident, *events) {}
         }
