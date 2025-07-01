@@ -201,78 +201,80 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
     if contains(path, "..") return true;
 
     #if OS == .LINUX {
-        if !file_exists(path) {
-            path = join(path, "/index.html",, temp);
-            if !file_exists(path) return true;
+        if !server.tls {
+            if !file_exists(path) {
+                path = join(path, "/index.html",, temp);
+                if !file_exists(path) return true;
+            }
+
+            fd := POSIX.open(temp_c_string(path), POSIX.O_RDONLY);
+            if fd == -1 return true;
+
+            file_stat: POSIX.stat_t;
+            result := POSIX.fstat(fd, *file_stat);
+            if result < 0 {
+                POSIX.close(fd);
+                return true;
+            }
+
+            size := file_stat.st_size;
+
+            client := find_client(server, response.client_socket);
+            if client == null {
+                POSIX.close(fd);
+                return true;
+            }
+
+            response.status = .Ok;
+
+            content_type := "text/plain";
+            if ends_with(path, ".html") {
+                content_type = "text/html";
+            } else if ends_with(path, ".css") {
+                content_type = "text/css";
+            } else if ends_with(path, ".js") {
+                content_type = "application/js";
+            } else if ends_with(path, ".json") {
+                content_type = "application/json";
+            }
+
+            set_header(*response.headers, "Content-Type", content_type);
+            set_header(*response.headers, "Content-Length", tprint("%", size));
+
+            if client.close_after_send {
+                set_header(*response.headers, "Connection", "close");
+            } else {
+                set_header(*response.headers, "Connection", "keep-alive");
+                set_header(*response.headers, "Keep-Alive", "timeout=30");
+            }
+
+            response.sendfile_fd = fd;
+            response.sendfile_count = size;
+
+            return false;
         }
-
-        fd := POSIX.open(temp_c_string(path), POSIX.O_RDONLY);
-        if fd == -1 return true;
-
-        file_stat: POSIX.stat_t;
-        result := POSIX.fstat(fd, *file_stat);
-        if result < 0 {
-            POSIX.close(fd);
-            return true;
-        }
-
-        size := file_stat.st_size;
-
-        client := find_client(server, response.client_socket);
-        if client == null {
-            POSIX.close(fd);
-            return true;
-        }
-
-        response.status = .Ok;
-
-        content_type := "text/plain";
-        if ends_with(path, ".html") {
-            content_type = "text/html";
-        } else if ends_with(path, ".css") {
-            content_type = "text/css";
-        } else if ends_with(path, ".js") {
-            content_type = "application/js";
-        } else if ends_with(path, ".json") {
-            content_type = "application/json";
-        }
-
-        set_header(*response.headers, "Content-Type", content_type);
-        set_header(*response.headers, "Content-Length", tprint("%", size));
-
-        if client.close_after_send {
-            set_header(*response.headers, "Connection", "close");
-        } else {
-            set_header(*response.headers, "Connection", "keep-alive");
-            set_header(*response.headers, "Keep-Alive", "timeout=30");
-        }
-
-        response.sendfile_fd = fd;
-        response.sendfile_count = size;
-
-        return false;
-    } else {
-        content, success := read_entire_file(path,, temp);
-        if !success {
-            path = join(path, "/index.html",, temp);
-            content, success = read_entire_file(path,, temp);
-            if !success return true;
-        }
-
-        if ends_with(path, ".html") {
-            return html(server, response, content);
-        } else if ends_with(path, ".css") {
-            return css(server, response, content);
-        } else if ends_with(path, ".js") {
-            return js(server, response, content);
-        } else if ends_with(path, ".json") {
-            return json(server, response, content);
-        } else {
-            return text(server, response, content);
-        }
-
-        return false;
     }
+
+    content, success := read_entire_file(path,, temp);
+    if !success {
+        path = join(path, "/index.html",, temp);
+        content, success = read_entire_file(path,, temp);
+        if !success return true;
+    }
+
+    if ends_with(path, ".html") {
+        return html(server, response, content);
+    } else if ends_with(path, ".css") {
+        return css(server, response, content);
+    } else if ends_with(path, ".js") {
+        return js(server, response, content);
+    } else if ends_with(path, ".json") {
+        return json(server, response, content);
+    } else {
+        return text(server, response, content);
+    }
+
+    return false;
 }
 
 text :: (server: *Http_Server, response: *Http_Response, text: string) -> error: bool {
@@ -628,6 +630,7 @@ Http_Client :: struct {
     #if OS == .LINUX {
         sendfile_fd: s32 = -1;
         sendfile_count: s32 = -1;
+        sendfile_bytes_sent: s32;
     }
 
     timeout: Apollo_Time;

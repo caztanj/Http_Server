@@ -199,9 +199,32 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
 
         #if OS == .LINUX {
             if client.sendfile_fd != -1 {
-                // @Todo: If we don't send the entire file we need to try again.
-                sendfile(client.socket, client.sendfile_fd, null, client.sendfile_count);
+                // sendfile does not work if we are using TLS.
+                assert(!server.tls);
+
+                max := client.sendfile_count - client.sendfile_bytes_sent;
+                bytes_sent := sendfile(client.socket, client.sendfile_fd, null, max);
+                if bytes_sent <= 0 {
+                    error := Socket.get_last_socket_error();
+
+                    if error != Socket.SOCKET_WOULDBLOCK {
+                        close(server, client);
+                        return false;
+                    }
+
+                    set_timeout(client, 30);
+                    return false;
+                }
+
+                client.sendfile_bytes_sent += bytes_sent;
+
+                if client.sendfile_count - client.sendfile_bytes_sent != 0 {
+                    return true;
+                }
+
                 client.sendfile_fd = -1;
+                client.sendfile_count = -1;
+                client.sendfile_bytes_sent = 0;
             }
         }
 
