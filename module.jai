@@ -226,10 +226,18 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
 
         response.status = .Ok;
 
+        content_type := "text/plain";
         if ends_with(path, ".html") {
-            set_header(*response.headers, "Content-Type", "text/html");
+            content_type = "text/html";
+        } else if ends_with(path, ".css") {
+            content_type = "text/css";
+        } else if ends_with(path, ".js") {
+            content_type = "application/js";
+        } else if ends_with(path, ".json") {
+            content_type = "application/json";
         }
 
+        set_header(*response.headers, "Content-Type", content_type);
         set_header(*response.headers, "Content-Length", tprint("%", size));
 
         if client.close_after_send {
@@ -253,6 +261,12 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
 
         if ends_with(path, ".html") {
             return html(server, response, content);
+        } else if ends_with(path, ".css") {
+            return css(server, response, content);
+        } else if ends_with(path, ".js") {
+            return js(server, response, content);
+        } else if ends_with(path, ".json") {
+            return json(server, response, content);
         } else {
             return text(server, response, content);
         }
@@ -262,43 +276,23 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
 }
 
 text :: (server: *Http_Server, response: *Http_Response, text: string) -> error: bool {
-    client := find_client(server, response.client_socket);
-    if client == null then return true;
-
-    response.status = .Ok;
-    response.body   = text;
-
-    set_header(*response.headers, "Content-Type", "text/plain");
-    set_header(*response.headers, "Content-Length", tprint("%", text.count));
-
-    if client.close_after_send {
-        set_header(*response.headers, "Connection", "close");
-    } else {
-        set_header(*response.headers, "Connection", "keep-alive");
-        set_header(*response.headers, "Keep-Alive", "timeout=30");
-    }
-
-    return false;
+    return text_response(server, response, text, "text/plain");
 }
 
 html :: (server: *Http_Server, response: *Http_Response, html: string) -> error: bool {
-    client := find_client(server, response.client_socket);
-    if client == null then return true;
+    return text_response(server, response, html, "text/html");
+}
 
-    response.status = .Ok;
-    response.body   = html;
+css :: (server: *Http_Server, response: *Http_Response, css: string) -> error: bool {
+    return text_response(server, response, css, "text/css");
+}
 
-    set_header(*response.headers, "Content-Type", "text/html");
-    set_header(*response.headers, "Content-Length", tprint("%", html.count));
+js :: (server: *Http_Server, response: *Http_Response, js: string) -> error: bool {
+    return text_response(server, response, js, "application/js");
+}
 
-    if client.close_after_send {
-        set_header(*response.headers, "Connection", "close");
-    } else {
-        set_header(*response.headers, "Connection", "keep-alive");
-        set_header(*response.headers, "Keep-Alive", "timeout=30");
-    }
-
-    return false;
+json :: (server: *Http_Server, response: *Http_Response, json: string) -> error: bool {
+    return text_response(server, response, json, "application/json");
 }
 
 not_found :: (server: *Http_Server, response: *Http_Response) -> error: bool {
@@ -422,6 +416,26 @@ print_http_request :: (request: *Http_Request) {
 }
 
 #scope_module
+
+text_response :: (server: *Http_Server, response: *Http_Response, text: string, content_type: string) -> error: bool {
+    client := find_client(server, response.client_socket);
+    if client == null then return true;
+
+    response.status = .Ok;
+    response.body   = text;
+
+    set_header(*response.headers, "Content-Type", content_type);
+    set_header(*response.headers, "Content-Length", tprint("%", text.count));
+
+    if client.close_after_send {
+        set_header(*response.headers, "Connection", "close");
+    } else {
+        set_header(*response.headers, "Connection", "keep-alive");
+        set_header(*response.headers, "Keep-Alive", "timeout=30");
+    }
+
+    return false;
+}
 
 is_digits :: (s: string) -> bool {
     t     := s.data;
