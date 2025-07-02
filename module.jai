@@ -194,7 +194,6 @@ get_header :: (headers: [] Http_Header, key: string) -> error: bool, string {
 static_file :: (server: *Http_Server, response: *Http_Response, file: string, directory: string) -> error: bool {
     path := join(directory, "/", file,, temp);
 
-    // @Todo: Make a function that checks if the resolved path is in the directory.
     if contains(path, "..") return true;
 
     #if OS == .LINUX {
