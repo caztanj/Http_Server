@@ -760,7 +760,6 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
 
                 if client.request.t < client.request.max_t {
                     count := client.request.max_t - client.request.t;
-                    // @Robustness: Clean up these memcpys.
                     memcpy(client.request.buffer.data, client.request.t, count);
                     client.request.buffer_count = count;
                     again = true;
