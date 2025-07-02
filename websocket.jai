@@ -211,8 +211,6 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
     } else if frame.payload_length == 127 {
         if (client.request.t + 7) >= client.request.max_t return .Need_More_Data, .{};
 
-        // @Robustness
-
         b1: u64 = client.request.t.*.(u64) << 56;
         b2: u64 = (client.request.t + 1).*.(u64) << 48;
         b3: u64 = (client.request.t + 2).*.(u64) << 40;
