@@ -355,7 +355,7 @@ decode_uri :: (uri: string) -> error: bool, string {
     current := string.{ count = 2 };
 
     while t < max_t {
-        if t.* == #char "%" {
+        if t.* == "%" {
             t += 2;
             if t >= max_t return true, "";
 
@@ -442,7 +442,7 @@ is_digits :: (s: string) -> bool {
     max_t := t + s.count;
 
     while t < max_t {
-        if t.* < #char "0" || t.* > #char "9" return false;
+        if t.* < "0" || t.* > "9" return false;
         t += 1;
     }
 
@@ -465,10 +465,10 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     content_length := 0;
 
     while true {
-        if client.request.t.* == #char "\r" {
+        if client.request.t.* == "\r" {
             client.request.t += 1;
             if client.request.t >= client.request.max_t return .Need_More_Data;
-            if client.request.t.* != #char "\n"         return .Error;
+            if client.request.t.* != "\n"         return .Error;
             client.request.t += 1;
             break;
         }
@@ -501,8 +501,8 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
 
     while t < max_t {
         if t - m.data > 7      return .Error;
-        if t.* == #char " "    break;
-        if t.* == #char "\r"   return .Error;
+        if t.* == " "    break;
+        if t.* == "\r"   return .Error;
         t += 1;
     }
 
@@ -530,8 +530,8 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     uri.data = t;
 
     while t < max_t {
-        if t.* == #char " "  break;
-        if t.* == #char "\r" return .Error;
+        if t.* == " "  break;
+        if t.* == "\r" return .Error;
         t += 1;
     }
 
@@ -547,10 +547,10 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     while t < max_t {
         if t - version.data > 8 return .Error;
 
-        if t.* == #char "\r" {
+        if t.* == "\r" {
             t += 1;
             if t >= max_t        return .Need_More_Data;
-            if t.* != #char "\n" return .Error;
+            if t.* != "\n" return .Error;
             break;
         }
 
@@ -570,7 +570,7 @@ parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Hea
     key := string.{ data = t };
 
     while t < max_t {
-        if t.* == #char ":" break;
+        if t.* == ":" break;
         t += 1;
     }
 
@@ -586,10 +586,10 @@ parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Hea
     value := string.{ data = t };
 
     while t < max_t {
-        if t.* == #char "\r" {
+        if t.* == "\r" {
             t += 1;
             if t >= max_t        return .Need_More_Data, .{};
-            if t.* != #char "\n" return .Error, .{};
+            if t.* != "\n" return .Error, .{};
             break;
         }
 
