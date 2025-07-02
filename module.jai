@@ -27,7 +27,6 @@ Http_Event :: struct {
     }
 }
 
-// @Todo: Allocate dynamic memory in a pool.
 Http_Request :: struct {
     client_socket: Socket.Socket;
 
