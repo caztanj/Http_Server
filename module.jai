@@ -794,7 +794,6 @@ maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Sock
                 event.type = .Close;
                 event.client_socket = socket;
 
-                // @Todo: Only send if we have not done so yet.
                 send_web_socket_close_frame(server, client);
 
             case .Control_Frame_Pong;
