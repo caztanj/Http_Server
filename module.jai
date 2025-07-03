@@ -618,15 +618,15 @@ Chunk :: struct {
     file_fd: s32 = -1;
 }
 
-Http_Client_Phase :: enum {
+Http_Client_Protocol :: enum {
     Http;
-    Upgrading_To_Web_Socket;
+    Upgrading_To_Web_Socket; // This is not really a protocol. It is more of an in-between state between Http and Web_Socket.
     Web_Socket;
 }
 
 Http_Client :: struct {
     socket: Socket.Socket;
-    phase: Http_Client_Phase;
+    protocol: Http_Client_Protocol;
 
     ssl: *LibreSSL.SSL;
 
@@ -699,197 +699,172 @@ add_web_socket_event :: (events: *[..] Http_Event, socket: Socket.Socket, type: 
 maybe_parse_request_or_web_socket_message :: (server: *Http_Server, socket: Socket.Socket, events: *[..] Http_Event) -> again: bool {
     client := find_client(server, socket);
     assert(client != null);
-    if client.phase == .Web_Socket {
-        if !client.request.waiting_for_fin_frame {
-            client.request.t = client.request.buffer.data;
-        } else {
-            client.request.t = client.request.buffer.data + client.request.buffer_offset;
-        }
 
-        client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+    if client.protocol == {
+        case .Http;
+            again := maybe_parse_http_request(server, client, events);
+            return again;
 
-        t     := client.request.t;
-        max_t := client.request.max_t;
+        case .Upgrading_To_Web_Socket;
+            assert(false, "unreachable");
 
-        again := false;
-
-        status, frame := parse_web_socket_frame(client,, temp);
-        if status == .Need_More_Data {
-            client.request.t = t;
-            client.request.max_t = max_t;
-            return false;
-        }
-
-        if status == .Error {
-            close(server, client);
-            return false;
-        }
-
-        if frame.rsv1 || frame.rsv2 || frame.rsv3 {
-            add_web_socket_event(events, socket, .Error);
-            return false;
-        }
-
-        if !frame.fin {
-            if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
-                close(server, client);
-                return false;
-            }
-
-            if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
-                add_web_socket_event(events, socket, .Error);
-                return false;
-            }
-
-            client.request.waiting_for_fin_frame = true;
-            client.request.buffer_offset = client.request.t - client.request.buffer.data;
-
-            return true;
-        } else if client.request.waiting_for_fin_frame {
-            if frame.opcode == .Continuation {
-                client.request.t     = client.request.buffer.data;
-                client.request.max_t = client.request.buffer.data + client.request.buffer_count;
-
-                status, frame = merge_continuation_frames(client,, temp);
-                if status != .Success {
-                    close(server, client);
-                    return false;
-                }
-
-                client.request.waiting_for_fin_frame = false;
-
-                if client.request.t < client.request.max_t {
-                    count := client.request.max_t - client.request.t;
-                    memcpy(client.request.buffer.data, client.request.t, count);
-                    client.request.buffer_count = count;
-                    again = true;
-                } else {
-                    client.request.buffer_count = 0;
-                    again = true;
-                }
-            } else {
-                memcpy(t, client.request.t, client.request.max_t - client.request.t);
-                client.request.buffer_count -= client.request.t - t;
-                client.request.t = t;
-                again = true;
-            }
-        } else if client.request.t < client.request.max_t {
-            count := client.request.max_t - client.request.t;
-            memcpy(client.request.buffer.data, client.request.t, count);
-            client.request.buffer_count = count;
-            again = true;
-        } else {
-            client.request.buffer_count = 0;
-        }
-
-        if #complete frame.opcode == {
-            case .Continuation;
-                if !client.request.waiting_for_fin_frame {
-                    close(server, client);
-                    return false;
-                }
-
-            case .Control_Frame_Close;
-                event := array_add(events);
-                event.type = .Close;
-                event.client_socket = socket;
-
-                send_web_socket_close_frame(server, client);
-
-            case .Control_Frame_Pong;
-
-            case .Control_Frame_Ping;
-                add_web_socket_event(events, socket, .Ping, frame);
-
-            case .Data_Frame_Text;
-                if client.request.waiting_for_fin_frame {
-                    close(server, client);
-                    return false;
-                }
-
-                // @Todo: Autobahn 6.4.* are Non-Strict
-                if !is_valid_utf8(frame.payload) {
-                    close(server, client);
-                    return false;
-                }
-
-                add_web_socket_event(events, socket, .Text, frame);
-
-            case .Data_Frame_Binary;
-                if client.request.waiting_for_fin_frame {
-                    close(server, client);
-                    return false;
-                }
-
-                add_web_socket_event(events, socket, .Binary, frame);
-
-            case;
-                add_web_socket_event(events, socket, .Error);
-
-        }
-
-        return again;
-    } else {
-        status := parse_request(client);
-        if #complete status == {
-            case .Error;
-                close(server, client);
-                return false;
-
-            case .Need_More_Data;
-                return false;
-
-            case .Success;
-                event := array_add(events);
-                event.type = .Http_Request;
-                event.client_socket = socket;
-                event.http_request = *client.request;
-        }
+        case .Web_Socket;
+            again := maybe_parse_web_socket_message(server, client, events);
+            return again;
     }
 
     return false;
 }
 
-is_valid_utf8 :: (bytes: [] u8) -> bool {
-    i := 0;
-    while i < bytes.count {
-        byte := bytes[i];
-        remaining_bytes: int;
+maybe_parse_http_request :: (server: *Http_Server, client: *Http_Client, events: *[..] Http_Event) -> again: bool {
+    status := parse_request(client);
+    if #complete status == {
+        case .Error;
+            close(server, client);
+            return false;
 
-        if (byte & 0x80) == 0 {
-            // 1-byte character: 0xxxxxxx
-            remaining_bytes = 0;
-        } else if (byte & 0xE0) == 0xC0 {
-            // 2-byte character: 110xxxxx 10xxxxxx
-            if byte < 0xC2 return false; // overlong encoding
-            remaining_bytes = 1;
-        } else if (byte & 0xF0) == 0xE0 {
-            // 3-byte character: 1110xxxx 10xxxxxx 10xxxxxx
-            remaining_bytes = 2;
-            if i + 2 >= bytes.count return false;
-            byte2 := bytes[i + 1];
-            if byte == 0xE0 && (byte2 & 0xE0) != 0xA0 return false; // overlong
-            if byte == 0xED && (byte2 & 0xE0) == 0xA0 return false; // surrogate
-        } else if (byte & 0xF8) == 0xF0 {
-            // 4-byte character: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-            if byte > 0xF4 return false; // max valid UTF-8 is U+10FFFF
-            if byte == 0xF0 && (bytes[i + 1] & 0xF0) == 0x80 return false; // overlong
-            if byte == 0xF4 && (bytes[i + 1] & 0xF0) > 0x8F return false; // beyond U+10FFFF
-            remaining_bytes = 3;
-        } else {
-            return false; // invalid first byte
-        }
+        case .Need_More_Data;
+            return false;
 
-        // Check continuation bytes
-        if i + remaining_bytes >= bytes.count return false;
-        for j: 1..remaining_bytes {
-            if (bytes[i + j] & 0xC0) != 0x80 return false;
-        }
+        case .Success;
+            event := array_add(events);
+            event.type = .Http_Request;
+            event.client_socket = client.socket;
+            event.http_request = *client.request;
+            return false;
+    }
+}
 
-        i += remaining_bytes + 1;
+maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, events: *[..] Http_Event) -> again: bool {
+    if !client.request.waiting_for_fin_frame {
+        client.request.t = client.request.buffer.data;
+    } else {
+        client.request.t = client.request.buffer.data + client.request.buffer_offset;
     }
 
-    return true;
+    client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+
+    t     := client.request.t;
+    max_t := client.request.max_t;
+
+    again := false;
+
+    status, frame := parse_web_socket_frame(client,, temp);
+    if status == .Need_More_Data {
+        client.request.t = t;
+        client.request.max_t = max_t;
+        return false;
+    }
+
+    if status == .Error {
+        close(server, client);
+        return false;
+    }
+
+    if frame.rsv1 || frame.rsv2 || frame.rsv3 {
+        add_web_socket_event(events, client.socket, .Error);
+        return false;
+    }
+
+    if !frame.fin {
+        if frame.opcode == .Control_Frame_Ping || frame.opcode == .Control_Frame_Pong {
+            close(server, client);
+            return false;
+        }
+
+        if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
+            add_web_socket_event(events, client.socket, .Error);
+            return false;
+        }
+
+        client.request.waiting_for_fin_frame = true;
+        client.request.buffer_offset = client.request.t - client.request.buffer.data;
+
+        return true;
+    } else if client.request.waiting_for_fin_frame {
+        if frame.opcode == .Continuation {
+            client.request.t     = client.request.buffer.data;
+            client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+
+            status, frame = merge_continuation_frames(client,, temp);
+            if status != .Success {
+                close(server, client);
+                return false;
+            }
+
+            client.request.waiting_for_fin_frame = false;
+
+            if client.request.t < client.request.max_t {
+                count := client.request.max_t - client.request.t;
+                memcpy(client.request.buffer.data, client.request.t, count);
+                client.request.buffer_count = count;
+                again = true;
+            } else {
+                client.request.buffer_count = 0;
+                again = true;
+            }
+        } else {
+            memcpy(t, client.request.t, client.request.max_t - client.request.t);
+            client.request.buffer_count -= client.request.t - t;
+            client.request.t = t;
+            again = true;
+        }
+    } else if client.request.t < client.request.max_t {
+        count := client.request.max_t - client.request.t;
+        memcpy(client.request.buffer.data, client.request.t, count);
+        client.request.buffer_count = count;
+        again = true;
+    } else {
+        client.request.buffer_count = 0;
+    }
+
+    if #complete frame.opcode == {
+        case .Continuation;
+            if !client.request.waiting_for_fin_frame {
+                close(server, client);
+                return false;
+            }
+
+        case .Control_Frame_Close;
+            event := array_add(events);
+            event.type = .Close;
+            event.client_socket = client.socket;
+
+            send_web_socket_close_frame(server, client);
+
+        case .Control_Frame_Pong;
+
+        case .Control_Frame_Ping;
+            add_web_socket_event(events, client.socket, .Ping, frame);
+
+        case .Data_Frame_Text;
+            if client.request.waiting_for_fin_frame {
+                close(server, client);
+                return false;
+            }
+
+            // @Todo: Autobahn 6.4.* are Non-Strict
+            if !is_valid_utf8(frame.payload) {
+                close(server, client);
+                return false;
+            }
+
+            add_web_socket_event(events, client.socket, .Text, frame);
+
+        case .Data_Frame_Binary;
+            if client.request.waiting_for_fin_frame {
+                close(server, client);
+                return false;
+            }
+
+            add_web_socket_event(events, client.socket, .Binary, frame);
+
+        case;
+            add_web_socket_event(events, client.socket, .Error);
+
+    }
+
+    return again;
 }
 
 MIN_BUFFER_SIZE :: 65536;
@@ -908,6 +883,7 @@ Socket :: #import "Socket";
 #load "poll.jai";
 #load "router.jai";
 #load "tests/tests.jai";
+#load "utf8.jai";
 #load "websocket.jai";
 
 create_context :: () -> *LibreSSL.SSL_CTX {

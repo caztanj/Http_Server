@@ -45,7 +45,7 @@ perform_web_socket_upgrade :: (server: *Http_Server, request: *Http_Request) -> 
     client := find_client(server, request.client_socket);
     if client == null return true;
 
-    client.phase = .Upgrading_To_Web_Socket;
+    client.protocol = .Upgrading_To_Web_Socket;
 
     send_response(server, response);
 

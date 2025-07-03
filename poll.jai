@@ -238,7 +238,7 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
 
     array_reset(*client.request.headers);
 
-    if client.phase != .Web_Socket {
+    if client.protocol != .Web_Socket {
         if client.request.t < client.request.max_t {
             count := client.request.max_t - client.request.t;
             memcpy(client.request.buffer.data, client.request.t, count);
@@ -248,8 +248,8 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
         }
     }
 
-    if client.phase == .Upgrading_To_Web_Socket {
-        client.phase = .Web_Socket;
+    if client.protocol == .Upgrading_To_Web_Socket {
+        client.protocol = .Web_Socket;
     }
 
     read_data_from_client(server, client);
