@@ -806,41 +806,33 @@ maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, e
         client.buffer_offset = client.t - client.buffer.data;
 
         return true;
-    } else if client.waiting_for_fin_frame {
-        if frame.opcode == .Continuation {
-            client.t     = client.buffer.data;
-            client.max_t = client.buffer.data + client.buffer_count;
+    }
 
-            status, frame = merge_continuation_frames(client,, temp);
-            if status != .Success {
-                close(server, client);
-                return false;
-            }
+    if frame.fin && client.waiting_for_fin_frame && frame.opcode == .Continuation {
+        client.t     = client.buffer.data;
+        client.max_t = client.buffer.data + client.buffer_count;
 
-            client.waiting_for_fin_frame = false;
-
-            if client.t < client.max_t {
-                count := client.max_t - client.t;
-                memcpy(client.buffer.data, client.t, count);
-                client.buffer_count = count;
-                again = true;
-            } else {
-                client.buffer_count = 0;
-                again = true;
-            }
-        } else {
-            memcpy(t, client.t, client.max_t - client.t);
-            client.buffer_count -= client.t - t;
-            client.t = t;
-            again = true;
+        status, frame = merge_continuation_frames(client,, temp);
+        if status != .Success {
+            close(server, client);
+            return false;
         }
-    } else if client.t < client.max_t {
-        count := client.max_t - client.t;
-        memcpy(client.buffer.data, client.t, count);
-        client.buffer_count = count;
+
+        client.waiting_for_fin_frame = false;
+        t = client.buffer.data;
+    }
+
+    if client.t < client.max_t {
         again = true;
+    }
+
+    count := client.max_t - client.t;
+    memcpy(t, client.t, count);
+
+    if client.waiting_for_fin_frame {
+        client.buffer_count = t - client.buffer.data + count;
     } else {
-        client.buffer_count = 0;
+        client.buffer_count = count;
     }
 
     if #complete frame.opcode == {
