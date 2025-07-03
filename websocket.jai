@@ -180,71 +180,71 @@ Parse_Web_Socket_Frame_Status :: enum {
 parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Status, Web_Socket_Frame {
     frame: Web_Socket_Frame;
 
-    frame.fin = xx client.request.t.* & 0b10000000;
+    frame.fin = xx client.t.* & 0b10000000;
 
-    frame.rsv1 = xx client.request.t.* & 0b01000000;
-    frame.rsv2 = xx client.request.t.* & 0b00100000;
-    frame.rsv3 = xx client.request.t.* & 0b00010000;
+    frame.rsv1 = xx client.t.* & 0b01000000;
+    frame.rsv2 = xx client.t.* & 0b00100000;
+    frame.rsv3 = xx client.t.* & 0b00010000;
 
-    frame.opcode = xx client.request.t.* & 0b00001111;
+    frame.opcode = xx client.t.* & 0b00001111;
 
-    client.request.t += 1;
-    if client.request.t >= client.request.max_t return .Need_More_Data, .{};
+    client.t += 1;
+    if client.t >= client.max_t return .Need_More_Data, .{};
 
-    frame.masked = xx client.request.t.* & 0b10000000;
-    frame.payload_length = client.request.t.* & 0b01111111;
+    frame.masked = xx client.t.* & 0b10000000;
+    frame.payload_length = client.t.* & 0b01111111;
 
-    client.request.t += 1;
-    if client.request.t >= client.request.max_t return .Need_More_Data, .{};
+    client.t += 1;
+    if client.t >= client.max_t return .Need_More_Data, .{};
 
     if frame.payload_length == 126 {
-        frame.payload_length = client.request.t.*;
+        frame.payload_length = client.t.*;
         frame.payload_length <<= 8;
 
-        client.request.t += 1;
-        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
+        client.t += 1;
+        if client.t >= client.max_t return .Need_More_Data, .{};
 
-        frame.payload_length |= client.request.t.*;
+        frame.payload_length |= client.t.*;
 
-        client.request.t += 1;
-        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
+        client.t += 1;
+        if client.t >= client.max_t return .Need_More_Data, .{};
     } else if frame.payload_length == 127 {
-        if (client.request.t + 7) >= client.request.max_t return .Need_More_Data, .{};
+        if (client.t + 7) >= client.max_t return .Need_More_Data, .{};
 
-        b1: u64 = client.request.t.*.(u64) << 56;
-        b2: u64 = (client.request.t + 1).*.(u64) << 48;
-        b3: u64 = (client.request.t + 2).*.(u64) << 40;
-        b4: u64 = (client.request.t + 3).*.(u64) << 32;
-        b5: u64 = (client.request.t + 4).*.(u64) << 24;
-        b6: u64 = (client.request.t + 5).*.(u64) << 16;
-        b7: u64 = (client.request.t + 6).*.(u64) << 8;
-        b8: u64 = (client.request.t + 7).*.(u64);
+        b1: u64 = client.t.*.(u64) << 56;
+        b2: u64 = (client.t + 1).*.(u64) << 48;
+        b3: u64 = (client.t + 2).*.(u64) << 40;
+        b4: u64 = (client.t + 3).*.(u64) << 32;
+        b5: u64 = (client.t + 4).*.(u64) << 24;
+        b6: u64 = (client.t + 5).*.(u64) << 16;
+        b7: u64 = (client.t + 6).*.(u64) << 8;
+        b8: u64 = (client.t + 7).*.(u64);
 
         frame.payload_length = b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8;
 
-        client.request.t += 8;
-        if client.request.t >= client.request.max_t return .Need_More_Data, .{};
+        client.t += 8;
+        if client.t >= client.max_t return .Need_More_Data, .{};
     }
 
     if frame.masked {
-        if client.request.max_t - client.request.t < 4 return .Need_More_Data, .{};
+        if client.max_t - client.t < 4 return .Need_More_Data, .{};
 
-        memcpy(frame.masking_key.data, client.request.t, 4);
+        memcpy(frame.masking_key.data, client.t, 4);
 
-        client.request.t += 4;
+        client.t += 4;
         if frame.payload_length == 0 {
             return .Success, frame;
-        } else if client.request.t >= client.request.max_t {
+        } else if client.t >= client.max_t {
             return .Need_More_Data, .{};
         }
     }
 
     if frame.opcode == .Control_Frame_Ping && frame.payload_length > 125 return .Error, .{};
 
-    if xx (client.request.max_t - client.request.t) < frame.payload_length return .Need_More_Data, .{};
+    if xx (client.max_t - client.t) < frame.payload_length return .Need_More_Data, .{};
 
     array_resize(*frame.payload, xx frame.payload_length);
-    memcpy(frame.payload.data, client.request.t, xx frame.payload_length);
+    memcpy(frame.payload.data, client.t, xx frame.payload_length);
 
     if frame.masked && frame.payload_length > 0 {
         for i: 0..frame.payload_length - 1 {
@@ -252,7 +252,7 @@ parse_web_socket_frame :: (client: *Http_Client) -> Parse_Web_Socket_Frame_Statu
         }
     }
 
-    client.request.t += frame.payload.count;
+    client.t += frame.payload.count;
 
     return .Success, frame;
 }

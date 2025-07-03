@@ -28,6 +28,9 @@ Http_Event :: struct {
 }
 
 Http_Request :: struct {
+    allocator: Allocator;
+    pool:      Flat_Pool;
+
     client_socket: Socket.Socket;
 
     uri:    string;
@@ -36,16 +39,24 @@ Http_Request :: struct {
     headers: [..] Http_Header;
 
     body: string;
+}
 
-    buffer:       [..] u8;
-    buffer_count: int;
+init :: (request: *Http_Request) {
+    request.allocator = Allocator.{ proc = flat_pool_allocator_proc, data = *request.pool };
 
-    t:     *u8;
-    max_t: *u8;
+    request.headers.allocator = request.allocator;
 
-    // These are only used by web sockets.
-    waiting_for_fin_frame: bool;
-    buffer_offset:         int;
+    request.uri.count = 0;
+    request.method    = .GET;
+
+    array_reset(*request.headers);
+
+    request.body.count = 0;
+}
+
+reset :: (request: *Http_Request) {
+    reset(*request.pool);
+    init(request);
 }
 
 Http_Response :: struct {
@@ -454,24 +465,24 @@ Parse_Request_Status :: enum {
 }
 
 parse_request :: (client: *Http_Client) -> Parse_Request_Status {
-    client.request.t     = client.request.buffer.data;
-    client.request.max_t = client.request.t + client.request.buffer_count;
+    client.t     = client.buffer.data;
+    client.max_t = client.t + client.buffer_count;
 
-    status := parse_request_line(*client.request);
+    status := parse_request_line(client);
     if status != .Success return status;
 
     content_length := 0;
 
     while true {
-        if client.request.t.* == "\r" {
-            client.request.t += 1;
-            if client.request.t >= client.request.max_t return .Need_More_Data;
-            if client.request.t.* != "\n"         return .Error;
-            client.request.t += 1;
+        if client.t.* == "\r" {
+            client.t += 1;
+            if client.t >= client.max_t return .Need_More_Data;
+            if client.t.* != "\n"         return .Error;
+            client.t += 1;
             break;
         }
 
-        status, header := parse_header(*client.request);
+        status, header := parse_header(client);
         if status != .Success return status;
 
         if equal_nocase(header.key, "Content-Length") {
@@ -484,17 +495,17 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
     }
 
     if content_length {
-        if client.request.t + content_length > client.request.max_t return .Need_More_Data;
+        if client.t + content_length > client.max_t return .Need_More_Data;
 
-        client.request.body = copy_string(string.{ data = client.request.t, count = content_length });
+        client.request.body = copy_string(string.{ data = client.t, count = content_length },, client.request.allocator);
 
-        client.request.t += content_length + 1;
+        client.t += content_length + 1;
     }
 
     return .Success;
 }
 
-parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
+parse_request_line :: (using client: *Http_Client) -> Parse_Request_Status {
     m := string.{ data = t };
 
     while t < max_t {
@@ -509,15 +520,15 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     m.count = t - m.data;
 
     if m == {
-        case "GET";      method = .GET;
-        case "HEAD";     method = .HEAD;
-        case "POST";     method = .POST;
-        case "PUT";      method = .PUT;
-        case "DELETE";   method = .DELETE;
-        case "CONNECT";  method = .CONNECT;
-        case "OPTIONS";  method = .OPTIONS;
-        case "TRACE";    method = .TRACE;
-        case "PATCH";    method = .PATCH;
+        case "GET";      request.method = .GET;
+        case "HEAD";     request.method = .HEAD;
+        case "POST";     request.method = .POST;
+        case "PUT";      request.method = .PUT;
+        case "DELETE";   request.method = .DELETE;
+        case "CONNECT";  request.method = .CONNECT;
+        case "OPTIONS";  request.method = .OPTIONS;
+        case "TRACE";    request.method = .TRACE;
+        case "PATCH";    request.method = .PATCH;
 
         case;  return .Error;
     }
@@ -525,7 +536,7 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     t += 1;
     if t >= max_t return .Need_More_Data;
 
-    uri.data = t;
+    uri := string.{ data = t };
 
     while t < max_t {
         if t.* == " "  break;
@@ -536,6 +547,8 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     if t >= max_t return .Need_More_Data;
 
     uri.count = t - uri.data;
+
+    request.uri = copy_string(uri,, client.request.allocator);
 
     t += 1;
     if t >= max_t return .Need_More_Data;
@@ -564,7 +577,7 @@ parse_request_line :: (using request: *Http_Request) -> Parse_Request_Status {
     return .Success;
 }
 
-parse_header :: (using request: *Http_Request) -> Parse_Request_Status, Http_Header {
+parse_header :: (using client: *Http_Client) -> Parse_Request_Status, Http_Header {
     key := string.{ data = t };
 
     while t < max_t {
@@ -637,10 +650,21 @@ Http_Client :: struct {
     close_after_send: bool;
 
     request: Http_Request;
+
+    buffer: [..] u8;
+    buffer_count: int;
+
+    t:     *u8;
+    max_t: *u8;
+
+    // These are only used by web sockets.
+    waiting_for_fin_frame: bool;
+    buffer_offset:         int;
 }
 
 init :: (client: *Http_Client, socket: Socket.Socket) {
     client.request.client_socket = socket;
+    init(*client.request);
 }
 
 add_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
@@ -666,8 +690,9 @@ find_client :: (server: *Http_Server, socket: Socket.Socket) -> *Http_Client {
 remove_client :: (server: *Http_Server, client: *Http_Client) {
     table_remove(*server.clients, client.socket);
 
+    array_reset(*client.buffer);
+
     array_reset(*client.request.headers);
-    array_reset(*client.request.buffer);
     array_reset(*client.chunks_to_send);
 
     free(client);
@@ -736,23 +761,23 @@ maybe_parse_http_request :: (server: *Http_Server, client: *Http_Client, events:
 }
 
 maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, events: *[..] Http_Event) -> again: bool {
-    if !client.request.waiting_for_fin_frame {
-        client.request.t = client.request.buffer.data;
+    if !client.waiting_for_fin_frame {
+        client.t = client.buffer.data;
     } else {
-        client.request.t = client.request.buffer.data + client.request.buffer_offset;
+        client.t = client.buffer.data + client.buffer_offset;
     }
 
-    client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+    client.max_t = client.buffer.data + client.buffer_count;
 
-    t     := client.request.t;
-    max_t := client.request.max_t;
+    t     := client.t;
+    max_t := client.max_t;
 
     again := false;
 
     status, frame := parse_web_socket_frame(client,, temp);
     if status == .Need_More_Data {
-        client.request.t = t;
-        client.request.max_t = max_t;
+        client.t = t;
+        client.max_t = max_t;
         return false;
     }
 
@@ -772,19 +797,19 @@ maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, e
             return false;
         }
 
-        if !client.request.waiting_for_fin_frame && frame.opcode == .Continuation {
+        if !client.waiting_for_fin_frame && frame.opcode == .Continuation {
             add_web_socket_event(events, client.socket, .Error);
             return false;
         }
 
-        client.request.waiting_for_fin_frame = true;
-        client.request.buffer_offset = client.request.t - client.request.buffer.data;
+        client.waiting_for_fin_frame = true;
+        client.buffer_offset = client.t - client.buffer.data;
 
         return true;
-    } else if client.request.waiting_for_fin_frame {
+    } else if client.waiting_for_fin_frame {
         if frame.opcode == .Continuation {
-            client.request.t     = client.request.buffer.data;
-            client.request.max_t = client.request.buffer.data + client.request.buffer_count;
+            client.t     = client.buffer.data;
+            client.max_t = client.buffer.data + client.buffer_count;
 
             status, frame = merge_continuation_frames(client,, temp);
             if status != .Success {
@@ -792,35 +817,35 @@ maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, e
                 return false;
             }
 
-            client.request.waiting_for_fin_frame = false;
+            client.waiting_for_fin_frame = false;
 
-            if client.request.t < client.request.max_t {
-                count := client.request.max_t - client.request.t;
-                memcpy(client.request.buffer.data, client.request.t, count);
-                client.request.buffer_count = count;
+            if client.t < client.max_t {
+                count := client.max_t - client.t;
+                memcpy(client.buffer.data, client.t, count);
+                client.buffer_count = count;
                 again = true;
             } else {
-                client.request.buffer_count = 0;
+                client.buffer_count = 0;
                 again = true;
             }
         } else {
-            memcpy(t, client.request.t, client.request.max_t - client.request.t);
-            client.request.buffer_count -= client.request.t - t;
-            client.request.t = t;
+            memcpy(t, client.t, client.max_t - client.t);
+            client.buffer_count -= client.t - t;
+            client.t = t;
             again = true;
         }
-    } else if client.request.t < client.request.max_t {
-        count := client.request.max_t - client.request.t;
-        memcpy(client.request.buffer.data, client.request.t, count);
-        client.request.buffer_count = count;
+    } else if client.t < client.max_t {
+        count := client.max_t - client.t;
+        memcpy(client.buffer.data, client.t, count);
+        client.buffer_count = count;
         again = true;
     } else {
-        client.request.buffer_count = 0;
+        client.buffer_count = 0;
     }
 
     if #complete frame.opcode == {
         case .Continuation;
-            if !client.request.waiting_for_fin_frame {
+            if !client.waiting_for_fin_frame {
                 close(server, client);
                 return false;
             }
@@ -838,7 +863,7 @@ maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, e
             add_web_socket_event(events, client.socket, .Ping, frame);
 
         case .Data_Frame_Text;
-            if client.request.waiting_for_fin_frame {
+            if client.waiting_for_fin_frame {
                 close(server, client);
                 return false;
             }
@@ -852,7 +877,7 @@ maybe_parse_web_socket_message :: (server: *Http_Server, client: *Http_Client, e
             add_web_socket_event(events, client.socket, .Text, frame);
 
         case .Data_Frame_Binary;
-            if client.request.waiting_for_fin_frame {
+            if client.waiting_for_fin_frame {
                 close(server, client);
                 return false;
             }

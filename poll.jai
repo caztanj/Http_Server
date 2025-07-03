@@ -102,17 +102,17 @@ recv :: (server: *Http_Server, client: *Http_Client, buffer: *u8, size: int) -> 
 
 read_from_client :: (server: *Http_Server, client: *Http_Client) -> closed: bool {
     while true {
-        offset := client.request.buffer.data + client.request.buffer_count;
-        max    := client.request.buffer.count - client.request.buffer_count;
+        offset := client.buffer.data + client.buffer_count;
+        max    := client.buffer.count - client.buffer_count;
 
         if max == 0 {
             Basic :: #import "Basic";
 
-            count := Basic.max(MIN_BUFFER_SIZE, client.request.buffer.count * 2);
-            array_resize(*client.request.buffer, count);
+            count := Basic.max(MIN_BUFFER_SIZE, client.buffer.count * 2);
+            array_resize(*client.buffer, count);
 
-            offset = client.request.buffer.data + client.request.buffer_count;
-            max    = client.request.buffer.count - client.request.buffer_count;
+            offset = client.buffer.data + client.buffer_count;
+            max    = client.buffer.count - client.buffer_count;
         }
 
         bytes_read := recv(server, client, offset, max);
@@ -140,9 +140,9 @@ read_from_client :: (server: *Http_Server, client: *Http_Client) -> closed: bool
             return true;
         }
 
-        client.request.buffer_count += bytes_read;
+        client.buffer_count += bytes_read;
 
-        if client.request.buffer_count == MAX_REQUEST_SIZE {
+        if client.buffer_count == MAX_REQUEST_SIZE {
             close(server, client);
             return true;
         }
@@ -230,21 +230,15 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
         return false;
     }
 
-    client.request.uri = "";
-    client.request.method = .GET;
-
-    free(client.request.body.data);
-    client.request.body.count = 0;
-
-    array_reset(*client.request.headers);
+    reset(*client.request);
 
     if client.protocol != .Web_Socket {
-        if client.request.t < client.request.max_t {
-            count := client.request.max_t - client.request.t;
-            memcpy(client.request.buffer.data, client.request.t, count);
-            client.request.buffer_count = count;
+        if client.t < client.max_t {
+            count := client.max_t - client.t;
+            memcpy(client.buffer.data, client.t, count);
+            client.buffer_count = count;
         } else {
-            client.request.buffer_count = 0;
+            client.buffer_count = 0;
         }
     }
 
