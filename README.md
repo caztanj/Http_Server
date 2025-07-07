@@ -12,9 +12,9 @@ This is an HTTP server written in Jai for Jai.
 - TLS (LibreSSL)
 - Router
 
-## Compile LibreSSL and Generate Bindings
+## Compile C Code and Generate Bindings
 
-If you want to use TLS you need to compile LibreSSL and generate bindings for it. Simply run `jai generate.jai - -compile`.
+Simply run `jai generate.jai - -compile`.
 
 You need to have CMake and Ninja installed.
 
