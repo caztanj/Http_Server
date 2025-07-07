@@ -59,6 +59,10 @@ reset :: (request: *Http_Request) {
     init(request);
 }
 
+fini :: (request: *Http_Request) {
+    fini(*request.pool);
+}
+
 Http_Response :: struct {
     client_socket: Socket.Socket;
 
@@ -624,9 +628,9 @@ remove_client :: (server: *Http_Server, client: *Http_Client) {
     table_remove(*server.clients, client.socket);
 
     array_reset(*client.buffer);
-
-    array_reset(*client.request.headers);
     array_reset(*client.chunks_to_send);
+
+    fini(*client.request);
 
     free(client);
 }
