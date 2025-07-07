@@ -33,16 +33,6 @@ send_response :: (server: *Http_Server, response: *Http_Response) -> error: bool
         done = serialized.count == 0;
     }
 
-    if response.fd != -1 {
-        assert(OS == .LINUX);
-
-        chunk := array_add(*client.chunks_to_send);
-
-        chunk.type = .File;
-        chunk.file_fd = response.fd;
-        chunk.bytes_to_send = response.fd_count;
-    }
-
     send_data_to_client(server, client);
 
     return false;
@@ -165,60 +155,33 @@ send_to_client :: (server: *Http_Server, client: *Http_Client) -> again: bool {
     assert(client.chunks_to_send.count > 0);
     chunk := *client.chunks_to_send[0];
 
-    if chunk.type == .File {
-        // sendfile does not work if we are using TLS.
-        assert(!server.tls && OS == .LINUX);
+    while chunk.bytes_to_send - chunk.bytes_sent > 0 {
+        offset := chunk.buffer.data + chunk.bytes_sent;
+        max    := chunk.bytes_to_send - chunk.bytes_sent;
 
-        #if OS == .LINUX {
-            max := chunk.bytes_to_send - chunk.bytes_sent;
-            bytes_sent := sendfile(client.socket, chunk.file_fd, null, xx max);
-            if bytes_sent <= 0 {
-                error := Socket.get_last_socket_error();
+        bytes_sent := send(server, client, offset, max);
+        if bytes_sent == -1 {
+            error := Socket.get_last_socket_error();
 
-                if error != Socket.SOCKET_WOULDBLOCK {
-                    close(server, client);
-                    return false;
+            if server.tls {
+                if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
+                    case LibreSSL.SSL_ERROR_WANT_READ;   #through;
+                    case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
                 }
-
-                set_timeout(client, 30);
-                return false;
             }
 
-            chunk.bytes_sent += bytes_sent;
-
-            if chunk.bytes_to_send - chunk.bytes_sent != 0 return true;
-
-            POSIX.close(chunk.file_fd);
-        }
-    } else {
-        while chunk.bytes_to_send - chunk.bytes_sent > 0 {
-            offset := chunk.buffer.data + chunk.bytes_sent;
-            max    := chunk.bytes_to_send - chunk.bytes_sent;
-
-            bytes_sent := send(server, client, offset, max);
-            if bytes_sent == -1 {
-                error := Socket.get_last_socket_error();
-
-                if server.tls {
-                    if LibreSSL.SSL_get_error(client.ssl, xx bytes_sent) == {
-                        case LibreSSL.SSL_ERROR_WANT_READ;   #through;
-                        case LibreSSL.SSL_ERROR_WANT_WRITE;  error = Socket.SOCKET_WOULDBLOCK;
-                    }
-                }
-
-                if error != Socket.SOCKET_WOULDBLOCK {
-                    close(server, client);
-                    return false;
-                }
-
-                set_timeout(client, 30);
+            if error != Socket.SOCKET_WOULDBLOCK {
+                close(server, client);
                 return false;
             }
-
-            chunk.bytes_sent += bytes_sent;
 
             set_timeout(client, 30);
+            return false;
         }
+
+        chunk.bytes_sent += bytes_sent;
+
+        set_timeout(client, 30);
     }
 
     array_ordered_remove_by_index(*client.chunks_to_send, 0);

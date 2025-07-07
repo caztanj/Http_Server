@@ -68,9 +68,6 @@ Http_Response :: struct {
     headers.allocator = temp;
 
     body: string; // Temporary storage
-
-    fd: s32 = -1;
-    fd_count: int;
 }
 
 Http_Method :: enum {
@@ -206,61 +203,6 @@ static_file :: (server: *Http_Server, response: *Http_Response, file: string, di
     path := join(directory, "/", file,, temp);
 
     if contains(path, "..") return true;
-
-    #if OS == .LINUX {
-        if !server.tls {
-            if !file_exists(path) {
-                path = join(path, "/index.html",, temp);
-                if !file_exists(path) return true;
-            }
-
-            fd := POSIX.open(temp_c_string(path), POSIX.O_RDONLY);
-            if fd == -1 return true;
-
-            file_stat: POSIX.stat_t;
-            result := POSIX.fstat(fd, *file_stat);
-            if result < 0 {
-                POSIX.close(fd);
-                return true;
-            }
-
-            size := file_stat.st_size;
-
-            client := find_client(server, response.client_socket);
-            if client == null {
-                POSIX.close(fd);
-                return true;
-            }
-
-            response.status = .Ok;
-
-            content_type := "text/plain";
-            if ends_with(path, ".html") {
-                content_type = "text/html";
-            } else if ends_with(path, ".css") {
-                content_type = "text/css";
-            } else if ends_with(path, ".js") {
-                content_type = "application/js";
-            } else if ends_with(path, ".json") {
-                content_type = "application/json";
-            }
-
-            set_header(*response.headers, "Content-Type", content_type);
-            set_header(*response.headers, "Content-Length", tprint("%", size));
-
-            if client.close_after_send {
-                set_header(*response.headers, "Connection", "close");
-            } else {
-                set_header(*response.headers, "Connection", "keep-alive");
-                set_header(*response.headers, "Keep-Alive", "timeout=30");
-            }
-
-            response.fd = fd;
-            response.fd_count = size;
-
-            return false;
-        }
-    }
 
     content, success := read_entire_file(path,, temp);
     if !success {
@@ -616,19 +558,10 @@ parse_header :: (using client: *Http_Client) -> Parse_Request_Status, Http_Heade
     return .Success, .{ key = key, value = value };
 }
 
-Chunk_Type :: enum {
-    Buffer;
-    File;
-}
-
 Chunk :: struct {
-    type: Chunk_Type;
-
     buffer:        [4096] u8;
     bytes_to_send: int;
     bytes_sent:    int;
-
-    file_fd: s32 = -1;
 }
 
 Http_Client_Protocol :: enum {

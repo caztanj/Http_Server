@@ -173,10 +173,6 @@ close :: (server: *Http_Server, client: *Http_Client, gracefully := false) {
         LibreSSL.SSL_free(client.ssl);
     }
 
-    for client.chunks_to_send {
-        if it.file_fd != -1 POSIX.close(it.file_fd);
-    }
-
     array_add(*server.closed_sockets, client.socket);
 
     socket := client.socket;
