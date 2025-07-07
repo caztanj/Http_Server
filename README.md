@@ -1,6 +1,6 @@
 # HTTP Server for Jai
 
-This is an HTTP server written in Jai for Jai. It is not complete and there are almost certainly bugs!
+This is an HTTP server written in Jai for Jai.
 
 ## Features
 
