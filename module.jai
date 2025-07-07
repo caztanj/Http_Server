@@ -435,6 +435,8 @@ parse_request :: (client: *Http_Client) -> Parse_Request_Status {
             result, success := string_to_int(header.value);
             if !success return .Error;
             content_length = result;
+        } else if equal_nocase(header.key, "Connection") {
+            client.close_after_send = equal_nocase(header.value, "close");
         }
 
         array_add(*client.request.headers, header);
