@@ -179,5 +179,3 @@ close :: (server: *Http_Server, client: *Http_Client, gracefully := false) {
     Socket.close_and_reset(*socket);
     remove_client(server, client);
 }
-
-sendfile :: (out_fd: s32, in_fd: s32, offset: *POSIX.off_t, count: s32) -> s32 #foreign libc;
