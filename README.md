@@ -11,6 +11,7 @@ This is an HTTP server written in Jai for Jai.
 - macOS (kqueue)
 - TLS (LibreSSL)
 - Router
+- gzip compression
 
 ## Compile C Code and Generate Bindings
 
