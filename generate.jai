@@ -10,7 +10,7 @@
         return;
     }
 
-    set_working_directory(tprint("%/modules/ZLib", path_strip_filename(#filepath)));
+    set_working_directory(tprint("%/modules/zlib", path_strip_filename(#filepath)));
     if !generate_zlib(args) {
         compiler_set_workspace_status(.FAILED);
         return;
@@ -18,7 +18,7 @@
 }
 
 #load "modules/LibreSSL/generate.jai";
-#load "modules/ZLib/generate.jai";
+#load "modules/zlib/generate.jai";
 
 #import "Basic";
 #import "Compiler";

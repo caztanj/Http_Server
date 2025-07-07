@@ -26,17 +26,17 @@ modules/LibreSSL/unix.jai
 modules/LibreSSL/windows.jai
 modules/LibreSSL/macos.jai
 
-modules/ZLib/.build
-modules/ZLib/linux
-modules/ZLib/windows
-modules/ZLib/macos
-modules/ZLib/*_shared_build
-modules/ZLib/*_shared_install
-modules/ZLib/*_static_build
-modules/ZLib/*_static_install
-modules/ZLib/linux.jai
-modules/ZLib/windows.jai
-modules/ZLib/macos.jai
+modules/zlib/.build
+modules/zlib/linux
+modules/zlib/windows
+modules/zlib/macos
+modules/zlib/*_shared_build
+modules/zlib/*_shared_install
+modules/zlib/*_static_build
+modules/zlib/*_static_install
+modules/zlib/linux.jai
+modules/zlib/windows.jai
+modules/zlib/macos.jai
 
 tests/autobahn/reports/*
 tests/autobahn/server
