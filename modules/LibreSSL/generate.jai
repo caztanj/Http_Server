@@ -1,7 +1,11 @@
+#scope_file
+
 AT_COMPILE_TIME :: true;
 
 // Full source is not distributed, it can be obatined from https://github.com/libressl/portable/
 SOURCE_PATH :: "src/libressl-4.1.0";
+
+#scope_export
 
 // NOTE(Charles): We generate bindings for everything, which is quite a lot of stuff. If you care about reducing this
 // there are a number of things you could do :LibreSSLReduceBindings.
@@ -26,7 +30,7 @@ DECLARATIONS_TO_OMIT :: string.[
     "tls_accept_cbs",
 ];
 
-generate :: (args: [] string) -> bool {
+generate_libressl :: (args: [] string) -> bool {
     compile        := array_find(args, "-compile");
     compile_debug  := array_find(args, "-debug");
     compile_clean  := array_find(args, "-clean");
@@ -302,14 +306,16 @@ libressl_compile :: (os_target: Operating_System_Tag, cpu_target := CPU, build_s
     );
 
     if os_target == .MACOS {
-        POSIX :: #import "POSIX";
-        POSIX.setenv("MACOSX_DEPLOYMENT_TARGET", "11.0", 1);
+        #if OS == .MACOS {
+            POSIX :: #import "POSIX";
+            POSIX.setenv("MACOSX_DEPLOYMENT_TARGET", "11.0", 1);
 
-        if macos_universal_binaries {
-            array_add(*config_command,
-                "-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64",
-                "-DENABLE_ASM=OFF",
-            );
+            if macos_universal_binaries {
+                array_add(*config_command,
+                    "-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64",
+                    "-DENABLE_ASM=OFF",
+                );
+            }
         }
     }
 
@@ -546,26 +552,26 @@ UNIX_FOOTER :: #string DONE
 }
 DONE
 
-#if AT_COMPILE_TIME {
-    #run,stallable {
-        set_build_options_dc(.{do_output=false});
-        root_options := get_build_options();
-        args := root_options.compile_time_command_line;
-        if !generate(args) {
-            compiler_set_workspace_status(.FAILED);
-        }
-    }
-} else {
-    #import "System";
+// #if AT_COMPILE_TIME {
+//     #run,stallable {
+//         set_build_options_dc(.{do_output=false});
+//         root_options := get_build_options();
+//         args := root_options.compile_time_command_line;
+//         if !generate(args) {
+//             compiler_set_workspace_status(.FAILED);
+//         }
+//     }
+// } else {
+//     #import "System";
 
-    main :: () {
-        set_working_directory(path_strip_filename(get_path_of_running_executable()));
-        args := get_command_line_arguments();
-        if !generate(args) {
-            exit(1);
-        }
-    }
-}
+//     main :: () {
+//         set_working_directory(path_strip_filename(get_path_of_running_executable()));
+//         args := get_command_line_arguments();
+//         if !generate(args) {
+//             exit(1);
+//         }
+//     }
+// }
 
 #import "Basic";
 #import "Bindings_Generator";
