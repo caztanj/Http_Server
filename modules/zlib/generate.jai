@@ -28,13 +28,11 @@ generate_zlib :: (args: [] string) -> bool {
 
         if os_target == {
             case .MACOS;
-                success  := zlib_compile(os_target, CPU, build_shared_libraries = true,  debug = compile_debug, clean = compile_clean, macos_universal_binaries);
-                success &&= zlib_compile(os_target, CPU, build_shared_libraries = false, debug = compile_debug, clean = compile_clean, macos_universal_binaries);
+                success := zlib_compile(os_target, CPU, build_shared_libraries = false,  debug = compile_debug, clean = compile_clean, macos_universal_binaries);
                 if !success return false;
 
             case;
-                success  := zlib_compile(os_target, build_shared_libraries = true,  debug = compile_debug, clean = compile_clean);
-                success &&= zlib_compile(os_target, build_shared_libraries = false, debug = compile_debug, clean = compile_clean);
+                success := zlib_compile(os_target, build_shared_libraries = false,  debug = compile_debug, clean = compile_clean);
                 if !success return false;
         }
     }
@@ -232,11 +230,12 @@ copy_binaries :: (os_target: Operating_System_Tag, install_dir: string, final_bi
     lib_dir := tprint("%/lib", install_dir);
     bin_dir := tprint("%/bin", install_dir);
 
+    copy_directory(lib_dir, final_binary_dir);
+
     if os_target == .WINDOWS {
+        copy_file(tprint("%/zlibstatic.lib", lib_dir), tprint("%/zlib.lib", final_binary_dir));
         copy_directory(bin_dir, final_binary_dir);
     }
-
-    copy_directory(lib_dir, final_binary_dir);
 }
 
 check_dependencies :: (os_target: Operating_System_Tag) -> bool {

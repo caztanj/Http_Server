@@ -7,6 +7,12 @@ make_response :: (event: Http_Event) -> *Http_Response {
 make_response :: (request: *Http_Request) -> *Http_Response {
     response := New(Http_Response);
     response.client_socket = request.client_socket;
+
+    error, accept_encoding := get_header(request.headers, "Accept-Encoding");
+    if error return response;
+
+    if contains(accept_encoding, "gzip") response.accepts_gzip = true;
+
     return response;
 }
 
@@ -72,6 +78,8 @@ Http_Response :: struct {
     headers.allocator = temp;
 
     body: string; // Temporary storage
+
+    accepts_gzip: bool;
 }
 
 Http_Method :: enum {
@@ -372,15 +380,57 @@ print_http_request :: (request: *Http_Request) {
 
 #scope_module
 
+gzip_compress :: (s: string) -> error: bool, string {
+    stream: zlib.z_stream;
+    if zlib.deflateInit2_(*stream, zlib.Z_DEFAULT_COMPRESSION, zlib.Z_DEFLATED, 16 + zlib.MAX_WBITS, 8, zlib.Z_DEFAULT_STRATEGY, zlib.ZLIB_VERSION, size_of(zlib.z_stream)) != zlib.Z_OK {
+        return true, "";
+    }
+
+    stream.next_in = s.data;
+    stream.avail_in = xx s.count;
+
+    buffer: [..] u8;
+    buffer.allocator = temp;
+    array_reserve(*buffer, s.count + 128);
+
+    stream.next_out = buffer.data;
+    stream.avail_out = xx buffer.allocated;
+
+    result := zlib.deflate(*stream, zlib.Z_FINISH);
+    if result != zlib.Z_STREAM_END {
+        print("% %\n", result, stream);
+        zlib.deflateEnd(*stream);
+        return true, "";
+    }
+
+    buffer.count = xx stream.total_out;
+
+    zlib.deflateEnd(*stream);
+
+    return false, buffer.(string);
+}
+
 text_response :: (server: *Http_Server, response: *Http_Response, text: string, content_type: string) -> error: bool {
     client := find_client(server, response.client_socket);
     if client == null return true;
 
+    body := text;
+
+    if response.accepts_gzip {
+        error, gzipped := gzip_compress(text);
+        if error {
+            log_error("Failed to gzip response.");
+        } else if text.count > gzipped.count {
+            body = gzipped;
+            set_header(*response.headers, "Content-Encoding", "gzip");
+        }
+    }
+
     response.status = .Ok;
-    response.body   = text;
+    response.body   = body;
 
     set_header(*response.headers, "Content-Type", content_type);
-    set_header(*response.headers, "Content-Length", tprint("%", text.count));
+    set_header(*response.headers, "Content-Length", tprint("%", body.count));
 
     if client.close_after_send {
         set_header(*response.headers, "Connection", "close");
@@ -890,6 +940,7 @@ print_ssl_errors :: () {
 }
 
 LibreSSL :: #import,dir "modules/LibreSSL";
+zlib     :: #import,dir "modules/zlib";
 
 #if OS == .LINUX {
     #load "linux.jai";
