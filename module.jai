@@ -892,6 +892,21 @@ Socket :: #import "Socket";
 #load "utf8.jai";
 #load "websocket.jai";
 
+alpn_select_cb :: (ssl: *LibreSSL.SSL, out: **u8, outlen: *u8, in: *u8, inlen: u32, arg: *void) -> s32 #c_call {
+    alpn_http2   :: u8.[2, "h", "2"];
+    alpn_http1_1 :: u8.[8, "h", "t", "t", "p", "/", "1", ".", "1"];
+
+    if LibreSSL.SSL_select_next_proto(out, outlen, alpn_http2.data, alpn_http2.count, in, inlen) == LibreSSL.OPENSSL_NPN_NEGOTIATED {
+        return LibreSSL.SSL_TLSEXT_ERR_OK;
+    }
+
+    if LibreSSL.SSL_select_next_proto(out, outlen, alpn_http1_1.data, alpn_http1_1.count, in, inlen) == LibreSSL.OPENSSL_NPN_NEGOTIATED {
+        return LibreSSL.SSL_TLSEXT_ERR_OK;
+    }
+
+    return LibreSSL.SSL_TLSEXT_ERR_NOACK;
+}
+
 create_context :: () -> *LibreSSL.SSL_CTX {
     method := LibreSSL.TLS_server_method();
     ctx := LibreSSL.SSL_CTX_new(method);
@@ -899,6 +914,8 @@ create_context :: () -> *LibreSSL.SSL_CTX {
         print_ssl_errors();
         return null;
     }
+
+    LibreSSL.SSL_CTX_set_alpn_select_cb(ctx, alpn_select_cb, null);
 
     return ctx;
 }
