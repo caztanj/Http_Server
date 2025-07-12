@@ -1,12 +1,3 @@
-#scope_file
-
-AT_COMPILE_TIME :: true;
-
-// Full source is not distributed, it can be obatined from https://github.com/libressl/portable/
-SOURCE_PATH :: "src/libressl-4.1.0";
-
-#scope_export
-
 // NOTE(Charles): We generate bindings for everything, which is quite a lot of stuff. If you care about reducing this
 // there are a number of things you could do :LibreSSLReduceBindings.
 
@@ -552,26 +543,7 @@ UNIX_FOOTER :: #string DONE
 }
 DONE
 
-// #if AT_COMPILE_TIME {
-//     #run,stallable {
-//         set_build_options_dc(.{do_output=false});
-//         root_options := get_build_options();
-//         args := root_options.compile_time_command_line;
-//         if !generate(args) {
-//             compiler_set_workspace_status(.FAILED);
-//         }
-//     }
-// } else {
-//     #import "System";
-
-//     main :: () {
-//         set_working_directory(path_strip_filename(get_path_of_running_executable()));
-//         args := get_command_line_arguments();
-//         if !generate(args) {
-//             exit(1);
-//         }
-//     }
-// }
+SOURCE_PATH :: "src/libressl-4.1.0";
 
 #import "Basic";
 #import "Bindings_Generator";

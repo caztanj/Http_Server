@@ -1,11 +1,3 @@
-#scope_file
-
-AT_COMPILE_TIME :: true;
-
-SOURCE_PATH :: "src/zlib-1.3.1";
-
-#scope_export
-
 generate_zlib :: (args: [] string) -> bool {
     compile       := array_find(args, "-compile");
     compile_debug := array_find(args, "-debug");
@@ -256,28 +248,7 @@ check_dependencies :: (os_target: Operating_System_Tag) -> bool {
     return true;
 }
 
-// #if AT_COMPILE_TIME  {
-//     #run {
-//         set_build_options_dc(.{ do_output = false });
-
-//         root_options := get_build_options();
-//         args := root_options.compile_time_command_line;
-
-//         if !generate_zlib(args) {
-//             compiler_set_workspace_status(.FAILED);
-//         }
-//     }
-// } else {
-//     main :: () {
-//         set_working_directory(path_strip_filename(get_path_of_running_executable()));
-
-//         args := get_command_line_arguments();
-
-//         if !generate(args) {
-//             exit(1);
-//         }
-//     }
-// }
+SOURCE_PATH :: "src/zlib-1.3.1";
 
 #import "Basic";
 #import "Bindings_Generator";
